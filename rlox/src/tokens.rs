@@ -137,6 +137,8 @@ impl<'s> Scanner<'s> {
             },
             ' ' | '\r' | '\t' => {}
             '\n' => self.line += 1,
+            '"' => self.string()?,
+            '0'..='9' => self.number()?,
             _ => {
                 return Err(CompileError {
                     line: self.line,
@@ -145,6 +147,49 @@ impl<'s> Scanner<'s> {
                 });
             }
         };
+        Ok(())
+    }
+
+    fn string(&mut self) -> Result<(), CompileError> {
+        while let Some(c) = self.peek() {
+            match c {
+                '"' => break,
+                '\n' => self.line += 1,
+                _ => {}
+            };
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err(CompileError {
+                line: self.line,
+                span: "".into(),
+                message: "Unterminated string.".into(),
+            });
+        }
+
+        self.advance();
+        self.add_token(TokenType::String(
+            &self.source[self.start + 1..self.curr - 1],
+        ));
+        Ok(())
+    }
+
+    fn number(&mut self) -> Result<(), CompileError> {
+        while let Some('0'..='9') = self.peek() {
+            self.advance();
+        }
+
+        if self.peek() == Some('.') && matches!(self.peek_nth(1), Some('0'..='9')) {
+            self.advance();
+            while let Some('0'..='9') = self.peek() {
+                self.advance();
+            }
+        }
+
+        self.add_token(TokenType::Number(self.curr_span().parse().expect(
+            "any number with digits from 0..9, optionally separated by one '.', should always parse",
+        )));
         Ok(())
     }
 
@@ -173,6 +218,10 @@ impl<'s> Scanner<'s> {
 
     fn peek(&self) -> Option<char> {
         self.rest_span().chars().next()
+    }
+
+    fn peek_nth(&self, n: usize) -> Option<char> {
+        self.rest_span().chars().nth(n)
     }
 
     fn add_token(&mut self, token: TokenType<'s>) {
@@ -263,23 +312,23 @@ mod tests {
             }
         };
 
-        (string, $value:expr, $span:expr, $line:expr) => {
+        (string, $value:expr, $line:expr) => {
             Token {
-                token: TokenType::String($value.to_string()),
-                span: $span.into(),
+                token: TokenType::String($value.into()),
+                span: format!("\"{}\"", $value),
                 line: $line,
             }
         };
 
-        (number, $value:expr, $span:expr, $line:expr) => {
+        (number, $value:expr, $line:expr) => {
             Token {
-                token: TokenType::Number($value),
-                span: $span.into(),
+                token: TokenType::Number($value as f64),
+                span: stringify!($value).into(),
                 line: $line,
             }
         };
 
-        (identifier, $value:expr, $span:expr, $line:expr) => {
+        (ident, $value:expr, $span:expr, $line:expr) => {
             Token {
                 token: TokenType::Identifier($value.to_string()),
                 span: $span.into(),
@@ -292,9 +341,7 @@ mod tests {
     fn test_single_char() {
         let source = "(){},-+.;*";
         let scanner = Scanner::new(source);
-        let tokens = scanner
-            .scan_tokens()
-            .expect("should be valid single char tokens");
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert_eq!(
             tokens,
@@ -318,9 +365,7 @@ mod tests {
     fn test_one_or_two_char() {
         let source = "=!<>!=>=<===";
         let scanner = Scanner::new(source);
-        let tokens = scanner
-            .scan_tokens()
-            .expect("should be valid single char tokens");
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert_eq!(
             tokens,
@@ -342,9 +387,7 @@ mod tests {
     fn test_whitespaces_ignored() {
         let source = "! = >\r\n== <\t= \n";
         let scanner = Scanner::new(source);
-        let tokens = scanner
-            .scan_tokens()
-            .expect("should be valid single char tokens");
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert_eq!(
             tokens,
@@ -359,13 +402,12 @@ mod tests {
             ]
         )
     }
+
     #[test]
     fn test_comments_ignored() {
         let source = "///()\n/=() // wtv";
         let scanner = Scanner::new(source);
-        let tokens = scanner
-            .scan_tokens()
-            .expect("should be valid single char tokens");
+        let tokens = scanner.scan_tokens().unwrap();
 
         assert_eq!(
             tokens,
@@ -375,6 +417,38 @@ mod tests {
                 tt!("(", 2),
                 tt!(")", 2),
                 tt!("eof", 2),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_string_literals() {
+        let source = "\"this string should ignore these // \n!= ()\"";
+        let scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_eq!(
+            tokens,
+            vec![
+                tt!(string, "this string should ignore these // \n!= ()", 2),
+                tt!("eof", 2),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_numbers() {
+        let source = "1234567890 0.123 123.0";
+        let scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_eq!(
+            tokens,
+            vec![
+                tt!(number, 1234567890, 1),
+                tt!(number, 0.123, 1),
+                tt!(number, 123.0, 1),
+                tt!("eof", 1),
             ]
         )
     }
