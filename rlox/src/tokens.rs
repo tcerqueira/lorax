@@ -1,5 +1,6 @@
 use crate::error::CompileError;
 
+#[expect(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum TokenType<'s> {
     // Single charecter tokens
@@ -48,9 +49,7 @@ pub enum TokenType<'s> {
     Eof,
 }
 
-impl Eq for TokenType<'_> {}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Token<'s> {
     pub token: TokenType<'s>,
     pub span: &'s str,
@@ -87,7 +86,7 @@ impl<'s> Scanner<'s> {
         }
         self.tokens.push(Token {
             token: TokenType::Eof,
-            span: "".into(),
+            span: "",
             line: self.line,
         });
         Ok(self.tokens)
@@ -443,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_numbers() {
-        let source = "1234567890 0.123 123.0";
+        let source = "1234567890 0.123 123.0 0.3";
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
@@ -453,6 +452,7 @@ mod tests {
                 tt!(number, 1234567890, 1),
                 tt!(number, 0.123, 1),
                 tt!(number, 123.0, 1),
+                tt!(number, 0.3, 1),
                 tt!("eof", 1),
             ]
         )
