@@ -53,13 +53,13 @@ impl Eq for TokenType<'_> {}
 #[derive(Debug, PartialEq, Eq)]
 pub struct Token<'s> {
     pub token: TokenType<'s>,
-    pub span: String,
+    pub span: &'s str,
     pub line: u32,
 }
 
 pub struct Scanner<'s> {
-    source: &'s str,
     tokens: Vec<Token<'s>>,
+    source: &'s str,
     start: usize,
     curr: usize,
     line: u32,
@@ -68,8 +68,8 @@ pub struct Scanner<'s> {
 impl<'s> Scanner<'s> {
     pub fn new(source: &'s str) -> Self {
         Self {
-            source,
             tokens: vec![],
+            source,
             start: 0,
             curr: 0,
             line: 1,
@@ -227,16 +227,16 @@ impl<'s> Scanner<'s> {
     fn add_token(&mut self, token: TokenType<'s>) {
         self.tokens.push(Token {
             token,
-            span: self.curr_span().into(),
+            span: self.curr_span(),
             line: self.line,
         });
     }
 
-    fn curr_span(&self) -> &str {
+    fn curr_span(&self) -> &'s str {
         &self.source[self.start..self.curr]
     }
 
-    fn rest_span(&self) -> &str {
+    fn rest_span(&self) -> &'s str {
         &self.source[self.curr..]
     }
 }
@@ -312,10 +312,10 @@ mod tests {
             }
         };
 
-        (string, $value:expr, $line:expr) => {
+        (string, $value:expr, $span:expr, $line:expr) => {
             Token {
-                token: TokenType::String($value.into()),
-                span: format!("\"{}\"", $value),
+                token: TokenType::String($value),
+                span: $span,
                 line: $line,
             }
         };
@@ -430,7 +430,12 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!(string, "this string should ignore these // \n!= ()", 2),
+                tt!(
+                    string,
+                    "this string should ignore these // \n!= ()",
+                    "\"this string should ignore these // \n!= ()\"",
+                    2
+                ),
                 tt!("eof", 2),
             ]
         )
