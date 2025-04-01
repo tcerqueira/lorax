@@ -1,7 +1,7 @@
 use crate::error::CompileError;
 
 #[derive(Debug, PartialEq)]
-pub enum TokenType<'s> {
+pub enum TokenType {
     // Single charecter tokens
     LeftParen,
     RightParen,
@@ -24,8 +24,8 @@ pub enum TokenType<'s> {
     Less,
     LessEqual,
     // Literals
-    Identifier(&'s str),
-    String(&'s str),
+    Identifier(Box<str>),
+    String(Box<str>),
     Number(f64),
     // Keywords
     And,
@@ -49,14 +49,14 @@ pub enum TokenType<'s> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Token<'s> {
-    pub token: TokenType<'s>,
-    pub span: &'s str,
+pub struct Token {
+    pub token: TokenType,
+    pub span: Box<str>,
     pub line: u32,
 }
 
 pub struct Scanner<'s> {
-    tokens: Vec<Token<'s>>,
+    tokens: Vec<Token>,
     source: &'s str,
     start: usize,
     curr: usize,
@@ -75,7 +75,7 @@ impl<'s> Scanner<'s> {
     }
 
     // TODO: make it a lazy iterator use std::iter::from_fn
-    pub fn scan_tokens(mut self) -> Result<Vec<Token<'s>>, Vec<CompileError>> {
+    pub fn scan_tokens(mut self) -> Result<Vec<Token>, Vec<CompileError>> {
         let mut errors = vec![];
         while !self.is_at_end() {
             self.start = self.curr;
@@ -85,7 +85,7 @@ impl<'s> Scanner<'s> {
         }
         self.tokens.push(Token {
             token: TokenType::Eof,
-            span: "",
+            span: "".into(),
             line: self.line,
         });
         Ok(self.tokens)
@@ -154,7 +154,7 @@ impl<'s> Scanner<'s> {
             self.advance();
         }
         let ident = self.curr_span();
-        self.add_token(keyword(ident).unwrap_or(TokenType::Identifier(ident)));
+        self.add_token(keyword(ident).unwrap_or(TokenType::Identifier(ident.into())));
         Ok(())
     }
 
@@ -178,7 +178,7 @@ impl<'s> Scanner<'s> {
 
         self.advance();
         self.add_token(TokenType::String(
-            &self.source[self.start + 1..self.curr - 1],
+            self.source[self.start + 1..self.curr - 1].into(),
         ));
         Ok(())
     }
@@ -232,10 +232,10 @@ impl<'s> Scanner<'s> {
         self.rest_span().chars().nth(n)
     }
 
-    fn add_token(&mut self, token: TokenType<'s>) {
+    fn add_token(&mut self, token: TokenType) {
         self.tokens.push(Token {
             token,
-            span: self.curr_span(),
+            span: self.curr_span().into(),
             line: self.line,
         });
     }
@@ -330,7 +330,7 @@ mod tests {
                     "true" => TokenType::True,
                     "var" => TokenType::Var,
                     "while" => TokenType::While,
-                    _ => TokenType::Identifier($str),
+                    _ => TokenType::Identifier($str.into()),
                 },
                 span: $str.into(),
                 line: $line,
@@ -343,8 +343,8 @@ mod tests {
 
         (string, $value:expr, $span:expr, $line:expr) => {
             Token {
-                token: TokenType::String($value),
-                span: $span,
+                token: TokenType::String($value.into()),
+                span: $span.into(),
                 line: $line,
             }
         };
