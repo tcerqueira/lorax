@@ -276,6 +276,10 @@ mod tests {
     use super::*;
 
     macro_rules! tt {
+        ("eof") => {
+            tt!("eof", 1)
+        };
+
         ("eof", $line:expr) => {
             Token {
                 token: TokenType::Eof,
@@ -285,48 +289,7 @@ mod tests {
         };
 
         ($str:literal) => {
-            Token {
-                token: match $str {
-                    "(" => TokenType::LeftParen,
-                    ")" => TokenType::RightParen,
-                    "{" => TokenType::LeftBrace,
-                    "}" => TokenType::RightBrace,
-                    "," => TokenType::Comma,
-                    "." => TokenType::Dot,
-                    "-" => TokenType::Minus,
-                    "+" => TokenType::Plus,
-                    ";" => TokenType::Semicolon,
-                    "*" => TokenType::Star,
-                    "!" => TokenType::Bang,
-                    "!=" => TokenType::BangEqual,
-                    "=" => TokenType::Equal,
-                    "==" => TokenType::EqualEqual,
-                    "<" => TokenType::Less,
-                    "<=" => TokenType::LessEqual,
-                    ">" => TokenType::Greater,
-                    ">=" => TokenType::GreaterEqual,
-                    "/" => TokenType::Slash,
-                    "and" => TokenType::And,
-                    "class" => TokenType::Class,
-                    "else" => TokenType::Else,
-                    "false" => TokenType::False,
-                    "for" => TokenType::For,
-                    "fun" => TokenType::Fun,
-                    "if" => TokenType::If,
-                    "nil" => TokenType::Nil,
-                    "or" => TokenType::Or,
-                    "print" => TokenType::Print,
-                    "return" => TokenType::Return,
-                    "super" => TokenType::Super,
-                    "this" => TokenType::This,
-                    "true" => TokenType::True,
-                    "var" => TokenType::Var,
-                    "while" => TokenType::While,
-                    _ => panic!("Unsupported token: {}", $str),
-                },
-                span: $str.into(),
-                line: 1,
-            }
+            tt!($str, 1)
         };
 
         ($str:literal, $line:expr) => {
@@ -367,11 +330,15 @@ mod tests {
                     "true" => TokenType::True,
                     "var" => TokenType::Var,
                     "while" => TokenType::While,
-                    _ => panic!("Unsupported token: {}", $str),
+                    _ => TokenType::Identifier($str),
                 },
                 span: $str.into(),
                 line: $line,
             }
+        };
+
+        (string, $value:expr, $span:expr) => {
+            tt!(string, $value, $span, 1)
         };
 
         (string, $value:expr, $span:expr, $line:expr) => {
@@ -382,18 +349,14 @@ mod tests {
             }
         };
 
+        (number, $value:expr) => {
+            tt!(number, $value, 1)
+        };
+
         (number, $value:expr, $line:expr) => {
             Token {
                 token: TokenType::Number($value as f64),
                 span: stringify!($value).into(),
-                line: $line,
-            }
-        };
-
-        (ident, $value:expr, $line:expr) => {
-            Token {
-                token: TokenType::Identifier($value),
-                span: $value,
                 line: $line,
             }
         };
@@ -418,7 +381,7 @@ mod tests {
                 tt!("."),
                 tt!(";"),
                 tt!("*"),
-                tt!("eof", 1),
+                tt!("eof"),
             ]
         )
     }
@@ -440,7 +403,7 @@ mod tests {
                 tt!(">="),
                 tt!("<="),
                 tt!("=="),
-                tt!("eof", 1),
+                tt!("eof"),
             ]
         )
     }
@@ -512,11 +475,11 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!(number, 1234567890, 1),
-                tt!(number, 0.123, 1),
-                tt!(number, 123.0, 1),
-                tt!(number, 0.3, 1),
-                tt!("eof", 1),
+                tt!(number, 1234567890),
+                tt!(number, 0.123),
+                tt!(number, 123.0),
+                tt!(number, 0.3),
+                tt!("eof"),
             ]
         )
     }
@@ -530,12 +493,12 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!(ident, "_hello123world", 1),
-                tt!(ident, "_and2", 1),
-                tt!(ident, "or_", 1),
-                tt!("var", 1),
-                tt!("return", 1),
-                tt!("eof", 1),
+                tt!("_hello123world"),
+                tt!("_and2"),
+                tt!("or_"),
+                tt!("var"),
+                tt!("return"),
+                tt!("eof"),
             ]
         )
     }
