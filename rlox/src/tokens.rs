@@ -1,4 +1,4 @@
-use crate::error::CompileError;
+use std::fmt::Display;
 
 #[derive(Debug, PartialEq)]
 pub enum TokenType {
@@ -50,456 +50,63 @@ pub enum TokenType {
 
 #[derive(Debug, PartialEq)]
 pub struct Token {
-    pub token: TokenType,
+    pub ty: TokenType,
     pub span: Box<str>,
     pub line: u32,
 }
 
-pub struct Scanner<'s> {
-    tokens: Vec<Token>,
-    source: &'s str,
-    start: usize,
-    curr: usize,
-    line: u32,
-}
-
-impl<'s> Scanner<'s> {
-    pub fn new(source: &'s str) -> Self {
+impl Token {
+    pub fn new(ty: TokenType) -> Self {
         Self {
-            tokens: vec![],
-            source,
-            start: 0,
-            curr: 0,
+            span: ty.to_string().into(),
+            ty,
             line: 1,
         }
     }
-
-    // TODO: make it a lazy iterator use std::iter::from_fn
-    pub fn scan_tokens(mut self) -> Result<Vec<Token>, Vec<CompileError>> {
-        let mut errors = vec![];
-        while !self.is_at_end() {
-            self.start = self.curr;
-            if let Err(err) = self.scan_token() {
-                errors.push(err);
-            }
-        }
-        self.tokens.push(Token {
-            token: TokenType::Eof,
-            span: "".into(),
-            line: self.line,
-        });
-        Ok(self.tokens)
-    }
-
-    fn is_at_end(&self) -> bool {
-        self.curr >= self.source.len()
-    }
-
-    fn scan_token(&mut self) -> Result<(), CompileError> {
-        let c = self.advance();
-        match c {
-            '(' => self.add_token(TokenType::LeftParen),
-            ')' => self.add_token(TokenType::RightParen),
-            '{' => self.add_token(TokenType::LeftBrace),
-            '}' => self.add_token(TokenType::RightBrace),
-            ',' => self.add_token(TokenType::Comma),
-            '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
-            '+' => self.add_token(TokenType::Plus),
-            ';' => self.add_token(TokenType::Semicolon),
-            '*' => self.add_token(TokenType::Star),
-            '!' => match self.matches('=') {
-                true => self.add_token(TokenType::BangEqual),
-                false => self.add_token(TokenType::Bang),
-            },
-            '=' => match self.matches('=') {
-                true => self.add_token(TokenType::EqualEqual),
-                false => self.add_token(TokenType::Equal),
-            },
-            '<' => match self.matches('=') {
-                true => self.add_token(TokenType::LessEqual),
-                false => self.add_token(TokenType::Less),
-            },
-            '>' => match self.matches('=') {
-                true => self.add_token(TokenType::GreaterEqual),
-                false => self.add_token(TokenType::Greater),
-            },
-            '/' => match self.matches('/') {
-                true => {
-                    while !self.is_at_end() && self.peek().is_some_and(|c| c != '\n') {
-                        // just consume the comment until end of the line
-                        self.advance();
-                    }
-                }
-                false => self.add_token(TokenType::Slash),
-            },
-            ' ' | '\r' | '\t' => {}
-            '\n' => self.line += 1,
-            '"' => self.string()?,
-            '0'..='9' => self.number()?,
-            'a'..='z' | 'A'..='Z' | '_' => self.identifier()?,
-            _ => {
-                return Err(CompileError {
-                    line: self.line,
-                    span: self.curr_span().into(),
-                    message: "Unexpected character.".into(),
-                });
-            }
-        };
-        Ok(())
-    }
-
-    fn identifier(&mut self) -> Result<(), CompileError> {
-        while let Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') = self.peek() {
-            self.advance();
-        }
-        let ident = self.curr_span();
-        self.add_token(keyword(ident).unwrap_or(TokenType::Identifier(ident.into())));
-        Ok(())
-    }
-
-    fn string(&mut self) -> Result<(), CompileError> {
-        while let Some(c) = self.peek() {
-            match c {
-                '"' => break,
-                '\n' => self.line += 1,
-                _ => {}
-            };
-            self.advance();
-        }
-
-        if self.is_at_end() {
-            return Err(CompileError {
-                line: self.line,
-                span: "".into(),
-                message: "Unterminated string.".into(),
-            });
-        }
-
-        self.advance();
-        self.add_token(TokenType::String(
-            self.source[self.start + 1..self.curr - 1].into(),
-        ));
-        Ok(())
-    }
-
-    fn number(&mut self) -> Result<(), CompileError> {
-        while let Some('0'..='9') = self.peek() {
-            self.advance();
-        }
-
-        if self.peek() == Some('.') && matches!(self.peek_nth(1), Some('0'..='9')) {
-            self.advance();
-            while let Some('0'..='9') = self.peek() {
-                self.advance();
-            }
-        }
-
-        self.add_token(TokenType::Number(self.curr_span().parse().expect(
-            "any number with digits from 0..9, optionally separated by one '.', should always parse",
-        )));
-        Ok(())
-    }
-
-    fn matches(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            return false;
-        }
-
-        if self.peek().is_some_and(|c| c == expected) {
-            self.curr += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn advance(&mut self) -> char {
-        let c = self
-            .rest_span()
-            .chars()
-            .next()
-            .expect("should always be called after a 'is_at_end' call");
-        self.curr += 1;
-        c
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.rest_span().chars().next()
-    }
-
-    fn peek_nth(&self, n: usize) -> Option<char> {
-        self.rest_span().chars().nth(n)
-    }
-
-    fn add_token(&mut self, token: TokenType) {
-        self.tokens.push(Token {
-            token,
-            span: self.curr_span().into(),
-            line: self.line,
-        });
-    }
-
-    fn curr_span(&self) -> &'s str {
-        &self.source[self.start..self.curr]
-    }
-
-    fn rest_span(&self) -> &'s str {
-        &self.source[self.curr..]
-    }
 }
 
-fn keyword(s: &str) -> Option<TokenType> {
-    Some(match s {
-        "and" => TokenType::And,
-        "class" => TokenType::Class,
-        "else" => TokenType::Else,
-        "false" => TokenType::False,
-        "for" => TokenType::For,
-        "fun" => TokenType::Fun,
-        "if" => TokenType::If,
-        "nil" => TokenType::Nil,
-        "or" => TokenType::Or,
-        "print" => TokenType::Print,
-        "return" => TokenType::Return,
-        "super" => TokenType::Super,
-        "this" => TokenType::This,
-        "true" => TokenType::True,
-        "var" => TokenType::Var,
-        "while" => TokenType::While,
-        _ => return None,
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    macro_rules! tt {
-        ("eof") => {
-            tt!("eof", 1)
-        };
-
-        ("eof", $line:expr) => {
-            Token {
-                token: TokenType::Eof,
-                span: "".into(),
-                line: $line,
-            }
-        };
-
-        ($str:literal) => {
-            tt!($str, 1)
-        };
-
-        ($str:literal, $line:expr) => {
-            Token {
-                token: match $str {
-                    "(" => TokenType::LeftParen,
-                    ")" => TokenType::RightParen,
-                    "{" => TokenType::LeftBrace,
-                    "}" => TokenType::RightBrace,
-                    "," => TokenType::Comma,
-                    "." => TokenType::Dot,
-                    "-" => TokenType::Minus,
-                    "+" => TokenType::Plus,
-                    ";" => TokenType::Semicolon,
-                    "*" => TokenType::Star,
-                    "!" => TokenType::Bang,
-                    "!=" => TokenType::BangEqual,
-                    "=" => TokenType::Equal,
-                    "==" => TokenType::EqualEqual,
-                    "<" => TokenType::Less,
-                    "<=" => TokenType::LessEqual,
-                    ">" => TokenType::Greater,
-                    ">=" => TokenType::GreaterEqual,
-                    "/" => TokenType::Slash,
-                    "and" => TokenType::And,
-                    "class" => TokenType::Class,
-                    "else" => TokenType::Else,
-                    "false" => TokenType::False,
-                    "for" => TokenType::For,
-                    "fun" => TokenType::Fun,
-                    "if" => TokenType::If,
-                    "nil" => TokenType::Nil,
-                    "or" => TokenType::Or,
-                    "print" => TokenType::Print,
-                    "return" => TokenType::Return,
-                    "super" => TokenType::Super,
-                    "this" => TokenType::This,
-                    "true" => TokenType::True,
-                    "var" => TokenType::Var,
-                    "while" => TokenType::While,
-                    _ => TokenType::Identifier($str.into()),
-                },
-                span: $str.into(),
-                line: $line,
-            }
-        };
-
-        (string, $value:expr, $span:expr) => {
-            tt!(string, $value, $span, 1)
-        };
-
-        (string, $value:expr, $span:expr, $line:expr) => {
-            Token {
-                token: TokenType::String($value.into()),
-                span: $span.into(),
-                line: $line,
-            }
-        };
-
-        (number, $value:expr) => {
-            tt!(number, $value, 1)
-        };
-
-        (number, $value:expr, $line:expr) => {
-            Token {
-                token: TokenType::Number($value as f64),
-                span: stringify!($value).into(),
-                line: $line,
-            }
-        };
-    }
-
-    #[test]
-    fn test_single_char() {
-        let source = "(){},-+.;*";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!("("),
-                tt!(")"),
-                tt!("{"),
-                tt!("}"),
-                tt!(","),
-                tt!("-"),
-                tt!("+"),
-                tt!("."),
-                tt!(";"),
-                tt!("*"),
-                tt!("eof"),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_one_or_two_char() {
-        let source = "=!<>!=>=<===";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!("="),
-                tt!("!"),
-                tt!("<"),
-                tt!(">"),
-                tt!("!="),
-                tt!(">="),
-                tt!("<="),
-                tt!("=="),
-                tt!("eof"),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_whitespaces_ignored() {
-        let source = "! = >\r\n== <\t= \n";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!("!"),
-                tt!("="),
-                tt!(">"),
-                tt!("==", 2),
-                tt!("<", 2),
-                tt!("=", 2),
-                tt!("eof", 3),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_comments_ignored() {
-        let source = "///()\n/=() // wtv";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!("/", 2),
-                tt!("=", 2),
-                tt!("(", 2),
-                tt!(")", 2),
-                tt!("eof", 2),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_string_literals() {
-        let source = "\"this string should ignore these // \n!= ()\"";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!(
-                    string,
-                    "this string should ignore these // \n!= ()",
-                    "\"this string should ignore these // \n!= ()\"",
-                    2
-                ),
-                tt!("eof", 2),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_numbers() {
-        let source = "1234567890 0.123 123.0 0.3";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!(number, 1234567890),
-                tt!(number, 0.123),
-                tt!(number, 123.0),
-                tt!(number, 0.3),
-                tt!("eof"),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_idents() {
-        let source = "_hello123world _and2 or_ var return";
-        let scanner = Scanner::new(source);
-        let tokens = scanner.scan_tokens().unwrap();
-
-        assert_eq!(
-            tokens,
-            vec![
-                tt!("_hello123world"),
-                tt!("_and2"),
-                tt!("or_"),
-                tt!("var"),
-                tt!("return"),
-                tt!("eof"),
-            ]
-        )
+impl Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenType::LeftParen => write!(f, "("),
+            TokenType::RightParen => write!(f, ")"),
+            TokenType::LeftBrace => write!(f, "{{"),
+            TokenType::RightBrace => write!(f, "}}"),
+            TokenType::Comma => write!(f, ","),
+            TokenType::Dot => write!(f, "."),
+            TokenType::Minus => write!(f, "-"),
+            TokenType::Plus => write!(f, "+"),
+            TokenType::Semicolon => write!(f, ";"),
+            TokenType::Slash => write!(f, "/"),
+            TokenType::Star => write!(f, "*"),
+            TokenType::Bang => write!(f, "!"),
+            TokenType::BangEqual => write!(f, "!="),
+            TokenType::Equal => write!(f, "="),
+            TokenType::EqualEqual => write!(f, "=="),
+            TokenType::Greater => write!(f, ">"),
+            TokenType::GreaterEqual => write!(f, ">="),
+            TokenType::Less => write!(f, "<"),
+            TokenType::LessEqual => write!(f, "<="),
+            TokenType::Identifier(ident) => write!(f, "{ident}"),
+            TokenType::String(s) => write!(f, "\"{s}\""),
+            TokenType::Number(num) => write!(f, "{num}"),
+            TokenType::And => write!(f, "and"),
+            TokenType::Class => write!(f, "class"),
+            TokenType::Else => write!(f, "else"),
+            TokenType::False => write!(f, "false"),
+            TokenType::Fun => write!(f, "fun"),
+            TokenType::For => write!(f, "for"),
+            TokenType::If => write!(f, "if"),
+            TokenType::Nil => write!(f, "nil"),
+            TokenType::Or => write!(f, "or"),
+            TokenType::Print => write!(f, "print"),
+            TokenType::Return => write!(f, "return"),
+            TokenType::Super => write!(f, "super"),
+            TokenType::This => write!(f, "this"),
+            TokenType::True => write!(f, "true"),
+            TokenType::Var => write!(f, "var"),
+            TokenType::While => write!(f, "while"),
+            TokenType::Eof => write!(f, "^D"),
+        }
     }
 }

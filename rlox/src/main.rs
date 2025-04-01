@@ -8,9 +8,11 @@ use std::{
 use anyhow::Context;
 
 use error::*;
-use tokens::*;
+use scanner::*;
 
 mod error;
+mod parser;
+mod scanner;
 mod tokens;
 
 type Result<T> = ::std::result::Result<T, Error>;
