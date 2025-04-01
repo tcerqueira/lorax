@@ -1,6 +1,5 @@
 use crate::error::CompileError;
 
-#[expect(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum TokenType<'s> {
     // Single charecter tokens
@@ -138,6 +137,7 @@ impl<'s> Scanner<'s> {
             '\n' => self.line += 1,
             '"' => self.string()?,
             '0'..='9' => self.number()?,
+            'a'..='z' | 'A'..='Z' | '_' => self.identifier()?,
             _ => {
                 return Err(CompileError {
                     line: self.line,
@@ -146,6 +146,15 @@ impl<'s> Scanner<'s> {
                 });
             }
         };
+        Ok(())
+    }
+
+    fn identifier(&mut self) -> Result<(), CompileError> {
+        while let Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') = self.peek() {
+            self.advance();
+        }
+        let ident = self.curr_span();
+        self.add_token(keyword(ident).unwrap_or(TokenType::Identifier(ident)));
         Ok(())
     }
 
@@ -240,6 +249,28 @@ impl<'s> Scanner<'s> {
     }
 }
 
+fn keyword(s: &str) -> Option<TokenType> {
+    Some(match s {
+        "and" => TokenType::And,
+        "class" => TokenType::Class,
+        "else" => TokenType::Else,
+        "false" => TokenType::False,
+        "for" => TokenType::For,
+        "fun" => TokenType::Fun,
+        "if" => TokenType::If,
+        "nil" => TokenType::Nil,
+        "or" => TokenType::Or,
+        "print" => TokenType::Print,
+        "return" => TokenType::Return,
+        "super" => TokenType::Super,
+        "this" => TokenType::This,
+        "true" => TokenType::True,
+        "var" => TokenType::Var,
+        "while" => TokenType::While,
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -275,6 +306,22 @@ mod tests {
                     ">" => TokenType::Greater,
                     ">=" => TokenType::GreaterEqual,
                     "/" => TokenType::Slash,
+                    "and" => TokenType::And,
+                    "class" => TokenType::Class,
+                    "else" => TokenType::Else,
+                    "false" => TokenType::False,
+                    "for" => TokenType::For,
+                    "fun" => TokenType::Fun,
+                    "if" => TokenType::If,
+                    "nil" => TokenType::Nil,
+                    "or" => TokenType::Or,
+                    "print" => TokenType::Print,
+                    "return" => TokenType::Return,
+                    "super" => TokenType::Super,
+                    "this" => TokenType::This,
+                    "true" => TokenType::True,
+                    "var" => TokenType::Var,
+                    "while" => TokenType::While,
                     _ => panic!("Unsupported token: {}", $str),
                 },
                 span: $str.into(),
@@ -304,6 +351,22 @@ mod tests {
                     ">" => TokenType::Greater,
                     ">=" => TokenType::GreaterEqual,
                     "/" => TokenType::Slash,
+                    "and" => TokenType::And,
+                    "class" => TokenType::Class,
+                    "else" => TokenType::Else,
+                    "false" => TokenType::False,
+                    "for" => TokenType::For,
+                    "fun" => TokenType::Fun,
+                    "if" => TokenType::If,
+                    "nil" => TokenType::Nil,
+                    "or" => TokenType::Or,
+                    "print" => TokenType::Print,
+                    "return" => TokenType::Return,
+                    "super" => TokenType::Super,
+                    "this" => TokenType::This,
+                    "true" => TokenType::True,
+                    "var" => TokenType::Var,
+                    "while" => TokenType::While,
                     _ => panic!("Unsupported token: {}", $str),
                 },
                 span: $str.into(),
@@ -327,10 +390,10 @@ mod tests {
             }
         };
 
-        (ident, $value:expr, $span:expr, $line:expr) => {
+        (ident, $value:expr, $line:expr) => {
             Token {
-                token: TokenType::Identifier($value.to_string()),
-                span: $span.into(),
+                token: TokenType::Identifier($value),
+                span: $value,
                 line: $line,
             }
         };
@@ -453,6 +516,25 @@ mod tests {
                 tt!(number, 0.123, 1),
                 tt!(number, 123.0, 1),
                 tt!(number, 0.3, 1),
+                tt!("eof", 1),
+            ]
+        )
+    }
+
+    #[test]
+    fn test_idents() {
+        let source = "_hello123world _and2 or_ var return";
+        let scanner = Scanner::new(source);
+        let tokens = scanner.scan_tokens().unwrap();
+
+        assert_eq!(
+            tokens,
+            vec![
+                tt!(ident, "_hello123world", 1),
+                tt!(ident, "_and2", 1),
+                tt!(ident, "or_", 1),
+                tt!("var", 1),
+                tt!("return", 1),
                 tt!("eof", 1),
             ]
         )
