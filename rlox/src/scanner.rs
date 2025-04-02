@@ -4,7 +4,6 @@ use crate::tokens::*;
 pub struct Scanner<'s> {
     tokens: Vec<Token>,
     source: &'s str,
-    start: usize,
     curr: usize,
     line: u32,
 }
@@ -14,7 +13,6 @@ impl<'s> Scanner<'s> {
         Self {
             tokens: vec![],
             source,
-            start: 0,
             curr: 0,
             line: 1,
         }
@@ -23,11 +21,13 @@ impl<'s> Scanner<'s> {
     // TODO: make it a lazy iterator use std::iter::from_fn
     pub fn scan_tokens(mut self) -> Result<Vec<Token>, Vec<CompileError>> {
         let mut errors = vec![];
-        while !self.is_at_end() {
-            self.start = self.curr;
+        while !self.source.is_empty() {
             if let Err(err) = self.scan_token() {
                 errors.push(err);
             }
+            // update source to the start of the next token
+            self.source = self.rest_span();
+            self.curr = 0;
         }
         self.tokens.push(Token {
             ty: TokenType::Eof,
@@ -35,10 +35,6 @@ impl<'s> Scanner<'s> {
             line: self.line,
         });
         Ok(self.tokens)
-    }
-
-    fn is_at_end(&self) -> bool {
-        self.curr >= self.source.len()
     }
 
     fn scan_token(&mut self) -> Result<(), CompileError> {
@@ -72,7 +68,7 @@ impl<'s> Scanner<'s> {
             },
             '/' => match self.matches('/') {
                 true => {
-                    while !self.is_at_end() && self.peek().is_some_and(|c| c != '\n') {
+                    while self.peek().is_some_and(|c| c != '\n') {
                         // just consume the comment until end of the line
                         self.advance();
                     }
@@ -96,7 +92,11 @@ impl<'s> Scanner<'s> {
     }
 
     fn identifier(&mut self) -> Result<(), CompileError> {
-        while let Some('a'..='z' | 'A'..='Z' | '_' | '0'..='9') = self.peek() {
+        for _ in self
+            .rest_span()
+            .chars()
+            .take_while(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+        {
             self.advance();
         }
         let ident = self.curr_span();
@@ -105,38 +105,34 @@ impl<'s> Scanner<'s> {
     }
 
     fn string(&mut self) -> Result<(), CompileError> {
-        while let Some(c) = self.peek() {
-            match c {
-                '"' => break,
-                '\n' => self.line += 1,
-                _ => {}
+        for c in self.rest_span().chars().take_while(|c| *c != '"') {
+            if c == '\n' {
+                self.line += 1
             };
             self.advance();
         }
 
-        if self.is_at_end() {
-            return Err(CompileError {
-                line: self.line,
-                span: "".into(),
-                message: "Unterminated string.".into(),
-            });
-        }
+        // Consume closing quote
+        self.advance_checked().ok_or(CompileError {
+            line: self.line,
+            span: "".into(),
+            message: "Unterminated string.".into(),
+        })?;
 
-        self.advance();
         self.add_token(TokenType::String(
-            self.source[self.start + 1..self.curr - 1].into(),
+            self.curr_span()[1..self.curr_span().len() - 1].into(),
         ));
         Ok(())
     }
 
     fn number(&mut self) -> Result<(), CompileError> {
-        while let Some('0'..='9') = self.peek() {
+        for _ in self.rest_span().chars().take_while(char::is_ascii_digit) {
             self.advance();
         }
 
         if self.peek() == Some('.') && matches!(self.peek_nth(1), Some('0'..='9')) {
             self.advance();
-            while let Some('0'..='9') = self.peek() {
+            for _ in self.rest_span().chars().take_while(char::is_ascii_digit) {
                 self.advance();
             }
         }
@@ -148,10 +144,6 @@ impl<'s> Scanner<'s> {
     }
 
     fn matches(&mut self, expected: char) -> bool {
-        if self.is_at_end() {
-            return false;
-        }
-
         if self.peek().is_some_and(|c| c == expected) {
             self.curr += 1;
             true
@@ -165,9 +157,15 @@ impl<'s> Scanner<'s> {
             .rest_span()
             .chars()
             .next()
-            .expect("should always be called after a 'is_at_end' call");
+            .expect("advance assumes there's a character to consume");
         self.curr += 1;
         c
+    }
+
+    fn advance_checked(&mut self) -> Option<char> {
+        let c = self.rest_span().chars().next()?;
+        self.curr += 1;
+        Some(c)
     }
 
     fn peek(&self) -> Option<char> {
@@ -187,7 +185,7 @@ impl<'s> Scanner<'s> {
     }
 
     fn curr_span(&self) -> &'s str {
-        &self.source[self.start..self.curr]
+        &self.source[..self.curr]
     }
 
     fn rest_span(&self) -> &'s str {
@@ -447,5 +445,11 @@ mod tests {
                 tt!("eof"),
             ]
         )
+    }
+
+    #[test]
+    fn test_wtv() {
+        let s = "==";
+        assert_eq!(&s[2..], "");
     }
 }
