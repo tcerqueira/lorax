@@ -78,8 +78,8 @@ impl<'s> Scanner<'s> {
             ' ' | '\r' | '\t' => {}
             '\n' => self.line += 1,
             '"' => self.string()?,
-            '0'..='9' => self.number()?,
-            'a'..='z' | 'A'..='Z' | '_' => self.identifier()?,
+            c if c.is_ascii_digit() => self.number()?,
+            c if c.is_alphabetic() || c == '_' => self.identifier()?,
             _ => {
                 return Err(CompileError {
                     line: self.line,
@@ -95,7 +95,7 @@ impl<'s> Scanner<'s> {
         for _ in self
             .rest_span()
             .chars()
-            .take_while(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '_' | '0'..='9'))
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
         {
             self.advance();
         }
@@ -105,6 +105,7 @@ impl<'s> Scanner<'s> {
     }
 
     fn string(&mut self) -> Result<(), CompileError> {
+        // TODO: escape string
         for c in self.rest_span().chars().take_while(|c| *c != '"') {
             if c == '\n' {
                 self.line += 1
@@ -119,8 +120,9 @@ impl<'s> Scanner<'s> {
             message: "Unterminated string.".into(),
         })?;
 
+        const QUOTE_WIDTH: usize = '"'.len_utf8();
         self.add_token(TokenType::String(
-            self.curr_span()[1..self.curr_span().len() - 1].into(),
+            self.curr_span()[QUOTE_WIDTH..self.curr_span().len() - QUOTE_WIDTH].into(),
         ));
         Ok(())
     }
@@ -130,7 +132,9 @@ impl<'s> Scanner<'s> {
             self.advance();
         }
 
-        if self.peek() == Some('.') && matches!(self.peek_nth(1), Some('0'..='9')) {
+        if self.peek().is_some_and(|c| c == '.')
+            && self.peek_nth(1).is_some_and(|c| c.is_ascii_digit())
+        {
             self.advance();
             for _ in self.rest_span().chars().take_while(char::is_ascii_digit) {
                 self.advance();
@@ -144,11 +148,12 @@ impl<'s> Scanner<'s> {
     }
 
     fn matches(&mut self, expected: char) -> bool {
-        if self.peek().is_some_and(|c| c == expected) {
-            self.curr += 1;
-            true
-        } else {
-            false
+        match self.peek() {
+            Some(c) if c == expected => {
+                self.curr += c.len_utf8();
+                true
+            }
+            _ => false,
         }
     }
 
@@ -158,13 +163,13 @@ impl<'s> Scanner<'s> {
             .chars()
             .next()
             .expect("advance assumes there's a character to consume");
-        self.curr += 1;
+        self.curr += c.len_utf8();
         c
     }
 
     fn advance_checked(&mut self) -> Option<char> {
         let c = self.rest_span().chars().next()?;
-        self.curr += 1;
+        self.curr += c.len_utf8();
         Some(c)
     }
 
