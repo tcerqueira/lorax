@@ -41,7 +41,7 @@ impl<'s> Scanner<'s> {
         Ok(self.tokens)
     }
 
-    fn scan_token(&mut self) -> Result<(), CompileError> {
+    pub fn scan_token(&mut self) -> Result<(), CompileError> {
         let c = self.advance();
         match c {
             '(' => self.add_token(TokenType::LeftParen),
