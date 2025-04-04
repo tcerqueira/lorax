@@ -31,7 +31,7 @@ impl From<Vec<CompileError>> for Error {
 }
 
 #[derive(Debug, Error)]
-#[error("[line {line}] Error{span}: {message}")]
+#[error("[line {line}] Error \"{span}\": {message}")]
 pub struct CompileError {
     pub line: u32,
     pub span: String,

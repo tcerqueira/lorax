@@ -29,6 +29,10 @@ impl<'s> Scanner<'s> {
             self.source = self.rest_span();
             self.curr = 0;
         }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
         self.tokens.push(Token {
             ty: TokenType::Eof,
             span: "".into(),
@@ -116,7 +120,7 @@ impl<'s> Scanner<'s> {
         // Consume closing quote
         self.advance_checked().ok_or(CompileError {
             line: self.line,
-            span: "".into(),
+            span: self.curr_span().into(),
             message: "Unterminated string.".into(),
         })?;
 

@@ -52,12 +52,21 @@ fn run_prompt() -> crate::Result<()> {
 
 fn run(source: String) -> crate::Result<()> {
     let scanner = Scanner::new(&source);
-    let tokens = scanner.scan_tokens();
 
-    for token in tokens? {
-        println!("{token:?}");
+    match scanner.scan_tokens() {
+        Ok(tokens) => {
+            for token in tokens {
+                println!("{token:?}");
+            }
+            Ok(())
+        }
+        Err(errs) => {
+            for err in &errs {
+                eprintln!("{err}");
+            }
+            Err(Error::Compile(errs))
+        }
     }
-    Ok(())
 }
 
 impl Termination for Error {
