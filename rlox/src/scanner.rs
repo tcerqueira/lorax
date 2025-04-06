@@ -227,93 +227,7 @@ fn keyword(s: &str) -> Option<TokenType> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    macro_rules! tt {
-        ("eof") => {
-            tt!("eof", 1)
-        };
-
-        ("eof", $line:expr) => {
-            Token {
-                ty: TokenType::Eof,
-                span: "".into(),
-                line: $line,
-            }
-        };
-
-        ($str:literal) => {
-            tt!($str, 1)
-        };
-
-        ($str:literal, $line:expr) => {
-            Token {
-                ty: match $str {
-                    "(" => TokenType::LeftParen,
-                    ")" => TokenType::RightParen,
-                    "{" => TokenType::LeftBrace,
-                    "}" => TokenType::RightBrace,
-                    "," => TokenType::Comma,
-                    "." => TokenType::Dot,
-                    "-" => TokenType::Minus,
-                    "+" => TokenType::Plus,
-                    ";" => TokenType::Semicolon,
-                    "*" => TokenType::Star,
-                    "!" => TokenType::Bang,
-                    "!=" => TokenType::BangEqual,
-                    "=" => TokenType::Equal,
-                    "==" => TokenType::EqualEqual,
-                    "<" => TokenType::Less,
-                    "<=" => TokenType::LessEqual,
-                    ">" => TokenType::Greater,
-                    ">=" => TokenType::GreaterEqual,
-                    "/" => TokenType::Slash,
-                    "and" => TokenType::And,
-                    "class" => TokenType::Class,
-                    "else" => TokenType::Else,
-                    "false" => TokenType::False,
-                    "for" => TokenType::For,
-                    "fun" => TokenType::Fun,
-                    "if" => TokenType::If,
-                    "nil" => TokenType::Nil,
-                    "or" => TokenType::Or,
-                    "print" => TokenType::Print,
-                    "return" => TokenType::Return,
-                    "super" => TokenType::Super,
-                    "this" => TokenType::This,
-                    "true" => TokenType::True,
-                    "var" => TokenType::Var,
-                    "while" => TokenType::While,
-                    _ => TokenType::Identifier($str.into()),
-                },
-                span: $str.into(),
-                line: $line,
-            }
-        };
-
-        (string, $value:expr, $span:expr) => {
-            tt!(string, $value, $span, 1)
-        };
-
-        (string, $value:expr, $span:expr, $line:expr) => {
-            Token {
-                ty: TokenType::String($value.into()),
-                span: $span.into(),
-                line: $line,
-            }
-        };
-
-        (number, $value:expr) => {
-            tt!(number, $value, 1)
-        };
-
-        (number, $value:expr, $line:expr) => {
-            Token {
-                ty: TokenType::Number($value as f64),
-                span: stringify!($value).into(),
-                line: $line,
-            }
-        };
-    }
+    use crate::tok;
 
     #[test]
     fn test_single_char() {
@@ -324,17 +238,17 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!("("),
-                tt!(")"),
-                tt!("{"),
-                tt!("}"),
-                tt!(","),
-                tt!("-"),
-                tt!("+"),
-                tt!("."),
-                tt!(";"),
-                tt!("*"),
-                tt!("eof"),
+                tok!['('],
+                tok![')'],
+                tok!['{'],
+                tok!['}'],
+                tok![,],
+                tok![-],
+                tok![+],
+                tok![.],
+                tok![;],
+                tok![*],
+                tok![EOF],
             ]
         )
     }
@@ -348,15 +262,15 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!("="),
-                tt!("!"),
-                tt!("<"),
-                tt!(">"),
-                tt!("!="),
-                tt!(">="),
-                tt!("<="),
-                tt!("=="),
-                tt!("eof"),
+                tok![=],
+                tok![!],
+                tok![<],
+                tok![>],
+                tok![!=],
+                tok![>=],
+                tok![<=],
+                tok![==],
+                tok![EOF],
             ]
         )
     }
@@ -370,13 +284,13 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!("!"),
-                tt!("="),
-                tt!(">"),
-                tt!("==", 2),
-                tt!("<", 2),
-                tt!("=", 2),
-                tt!("eof", 3),
+                tok![!],
+                tok![=],
+                tok![>],
+                tok!(==, 2),
+                tok!(<, 2),
+                tok!(=, 2),
+                tok!(EOF, 3),
             ]
         )
     }
@@ -390,11 +304,11 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!("/", 2),
-                tt!("=", 2),
-                tt!("(", 2),
-                tt!(")", 2),
-                tt!("eof", 2),
+                tok!(/, 2),
+                tok!(=, 2),
+                tok!('(', 2),
+                tok!(')', 2),
+                tok!(EOF, 2),
             ]
         )
     }
@@ -408,13 +322,11 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!(
-                    string,
-                    "this string should ignore these // \n!= ()",
-                    "\"this string should ignore these // \n!= ()\"",
+                tok![
+                    s: "this string should ignore these // \n!= ()",
                     2
-                ),
-                tt!("eof", 2),
+                ],
+                tok!(EOF, 2),
             ]
         )
     }
@@ -428,11 +340,11 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!(number, 1234567890),
-                tt!(number, 0.123),
-                tt!(number, 123.0),
-                tt!(number, 0.3),
-                tt!("eof"),
+                tok![n: 1234567890],
+                tok![n: 0.123],
+                tok![n: 123.0],
+                tok![n: 0.3],
+                tok![EOF],
             ]
         )
     }
@@ -446,19 +358,13 @@ mod tests {
         assert_eq!(
             tokens,
             vec![
-                tt!("_hello123world"),
-                tt!("_and2"),
-                tt!("or_"),
-                tt!("var"),
-                tt!("return"),
-                tt!("eof"),
+                tok![id: "_hello123world"],
+                tok![id: "_and2"],
+                tok![id: "or_"],
+                tok![var],
+                tok![return],
+                tok![EOF],
             ]
         )
-    }
-
-    #[test]
-    fn test_wtv() {
-        let s = "==";
-        assert_eq!(&s[2..], "");
     }
 }

@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::tokens::{Token, TokenType};
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Usage: rlox [script]")]
@@ -36,4 +38,14 @@ pub struct CompileError {
     pub line: u32,
     pub span: String,
     pub message: String,
+}
+
+impl CompileError {
+    pub fn expected(expected: TokenType, found: Token) -> Self {
+        Self {
+            line: found.line,
+            span: found.span.into(),
+            message: format!("Expected '{}', found '{}'", expected, found.ty),
+        }
+    }
 }

@@ -55,16 +55,6 @@ pub struct Token {
     pub line: u32,
 }
 
-impl Token {
-    pub fn new(ty: TokenType) -> Self {
-        Self {
-            span: ty.to_string().into(),
-            ty,
-            line: 1,
-        }
-    }
-}
-
 impl Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -109,4 +99,290 @@ impl Display for TokenType {
             TokenType::Eof => write!(f, "^D"),
         }
     }
+}
+
+#[macro_export]
+macro_rules! tok {
+    (EOF, $line:expr) => {
+        Token {
+            ty: TokenType::Eof,
+            span: "".into(),
+            line: $line,
+        }
+    };
+    ['(', $line:expr] => {
+        Token {
+            ty: TokenType::LeftParen,
+            span: "(".into(),
+            line: $line,
+        }
+    };
+    [')', $line:expr] => {
+        Token {
+            ty: TokenType::RightParen,
+            span: ")".into(),
+            line: $line,
+        }
+    };
+    ['{', $line:expr] => {
+        Token {
+            ty: TokenType::LeftBrace,
+            span: "{".into(),
+            line: $line,
+        }
+    };
+    ['}', $line:expr] => {
+        Token {
+            ty: TokenType::RightBrace,
+            span: "}".into(),
+            line: $line,
+        }
+    };
+    [,, $line:expr] => {
+        Token {
+            ty: TokenType::Comma,
+            span: ",".into(),
+            line: $line,
+        }
+    };
+    [., $line:expr] => {
+        Token {
+            ty: TokenType::Dot,
+            span: ".".into(),
+            line: $line,
+        }
+    };
+    [-, $line:expr] => {
+        Token {
+            ty: TokenType::Minus,
+            span: "-".into(),
+            line: $line,
+        }
+    };
+    [+, $line:expr] => {
+        Token {
+            ty: TokenType::Plus,
+            span: "+".into(),
+            line: $line,
+        }
+    };
+    [;, $line:expr] => {
+        Token {
+            ty: TokenType::Semicolon,
+            span: ";".into(),
+            line: $line,
+        }
+    };
+    [*, $line:expr] => {
+        Token {
+            ty: TokenType::Star,
+            span: "*".into(),
+            line: $line,
+        }
+    };
+    [!, $line:expr] => {
+        Token {
+            ty: TokenType::Bang,
+            span: "!".into(),
+            line: $line,
+        }
+    };
+    [!=, $line:expr] => {
+        Token {
+            ty: TokenType::BangEqual,
+            span: "!=".into(),
+            line: $line,
+        }
+    };
+    [=, $line:expr] => {
+        Token {
+            ty: TokenType::Equal,
+            span: "=".into(),
+            line: $line,
+        }
+    };
+    [==, $line:expr] => {
+        Token {
+            ty: TokenType::EqualEqual,
+            span: "==".into(),
+            line: $line,
+        }
+    };
+    [<, $line:expr] => {
+        Token {
+            ty: TokenType::Less,
+            span: "<".into(),
+            line: $line,
+        }
+    };
+    [<=, $line:expr] => {
+        Token {
+            ty: TokenType::LessEqual,
+            span: "<=".into(),
+            line: $line,
+        }
+    };
+    [>, $line:expr] => {
+        Token {
+            ty: TokenType::Greater,
+            span: ">".into(),
+            line: $line,
+        }
+    };
+    [>=, $line:expr] => {
+        Token {
+            ty: TokenType::GreaterEqual,
+            span: ">=".into(),
+            line: $line,
+        }
+    };
+    [/, $line:expr] => {
+        Token {
+            ty: TokenType::Slash,
+            span: "/".into(),
+            line: $line,
+        }
+    };
+    [and, $line:expr] => {
+        Token {
+            ty: TokenType::And,
+            span: "and".into(),
+            line: $line,
+        }
+    };
+    [class, $line:expr] => {
+        Token {
+            ty: TokenType::Class,
+            span: "class".into(),
+            line: $line,
+        }
+    };
+    [else, $line:expr] => {
+        Token {
+            ty: TokenType::Else,
+            span: "else".into(),
+            line: $line,
+        }
+    };
+    [false, $line:expr] => {
+        Token {
+            ty: TokenType::False,
+            span: "false".into(),
+            line: $line,
+        }
+    };
+    [for, $line:expr] => {
+        Token {
+            ty: TokenType::For,
+            span: "for".into(),
+            line: $line,
+        }
+    };
+    [fun, $line:expr] => {
+        Token {
+            ty: TokenType::Fun,
+            span: "fun".into(),
+            line: $line,
+        }
+    };
+    [if, $line:expr] => {
+        Token {
+            ty: TokenType::If,
+            span: "if".into(),
+            line: $line,
+        }
+    };
+    [nil, $line:expr] => {
+        Token {
+            ty: TokenType::Nil,
+            span: "nil".into(),
+            line: $line,
+        }
+    };
+    [or, $line:expr] => {
+        Token {
+            ty: TokenType::Or,
+            span: "or".into(),
+            line: $line,
+        }
+    };
+    [print, $line:expr] => {
+        Token {
+            ty: TokenType::Print,
+            span: "print".into(),
+            line: $line,
+        }
+    };
+    [return, $line:expr] => {
+        Token {
+            ty: TokenType::Return,
+            span: "return".into(),
+            line: $line,
+        }
+    };
+    [super, $line:expr] => {
+        Token {
+            ty: TokenType::Super,
+            span: "super".into(),
+            line: $line,
+        }
+    };
+    [this, $line:expr] => {
+        Token {
+            ty: TokenType::This,
+            span: "this".into(),
+            line: $line,
+        }
+    };
+    [true, $line:expr] => {
+        Token {
+            ty: TokenType::True,
+            span: "true".into(),
+            line: $line,
+        }
+    };
+    [var, $line:expr] => {
+        Token {
+            ty: TokenType::Var,
+            span: "var".into(),
+            line: $line,
+        }
+    };
+    [while, $line:expr] => {
+        Token {
+            ty: TokenType::While,
+            span: "while".into(),
+            line: $line,
+        }
+    };
+
+    [$any:tt] => {
+        tok![$any, 1]
+    };
+
+    [s: $lit:expr, $line:expr] => {
+        Token {
+            ty: TokenType::String($lit.into()),
+            span: format!("\"{}\"", $lit).into(),
+            line: $line,
+        }
+    };
+    [n: $lit:expr, $line:expr] => {
+        Token {
+            ty: TokenType::Number($lit as f64),
+            span: stringify!($lit).into(),
+            line: $line,
+        }
+    };
+    [id: $lit:expr, $line:expr] => {
+        Token {
+            ty: TokenType::Identifier($lit.into()),
+            span: $lit.into(),
+            line: $line,
+        }
+    };
+
+    [$tag:tt: $lit:expr] => {
+        tok![$tag: $lit, 1]
+    };
 }

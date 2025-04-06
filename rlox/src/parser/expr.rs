@@ -1,9 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use super::visitor::Visitor;
-
 use crate::tokens::Token;
 
+#[derive(Debug, PartialEq)]
 pub enum Expr {
     Binary(ExprBinary),
     Grouping(ExprGrouping),
@@ -11,20 +11,20 @@ pub enum Expr {
     Unary(ExprUnary),
 }
 
+#[derive(Debug, PartialEq)]
 pub struct ExprBinary {
     pub op: Token,
     pub left: Box<Expr>,
     pub right: Box<Expr>,
 }
 
-pub struct ExprGrouping {
-    pub inner: Box<Expr>,
-}
+#[derive(Debug, PartialEq)]
+pub struct ExprGrouping(pub Box<Expr>);
 
-pub struct ExprLiteral {
-    pub token: Token,
-}
+#[derive(Debug, PartialEq)]
+pub struct ExprLiteral(pub Token);
 
+#[derive(Debug, PartialEq)]
 pub struct ExprUnary {
     pub op: Token,
     pub right: Box<Expr>,
@@ -58,12 +58,12 @@ impl Visitor for AstPrinter<'_, '_> {
 
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
         write!(self.fmt, "(group ")?;
-        expr.inner.accept(self)?;
+        expr.0.accept(self)?;
         write!(self.fmt, ")")
     }
 
     fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
-        write!(self.fmt, "{}", expr.token.ty)
+        write!(self.fmt, "{}", expr.0.ty)
     }
 
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
@@ -79,28 +79,53 @@ impl Display for Expr {
     }
 }
 
+impl From<ExprBinary> for Expr {
+    fn from(value: ExprBinary) -> Self {
+        Self::Binary(value)
+    }
+}
+
+impl From<ExprUnary> for Expr {
+    fn from(value: ExprUnary) -> Self {
+        Self::Unary(value)
+    }
+}
+
+impl From<ExprGrouping> for Expr {
+    fn from(value: ExprGrouping) -> Self {
+        Self::Grouping(value)
+    }
+}
+
+impl From<ExprLiteral> for Expr {
+    fn from(value: ExprLiteral) -> Self {
+        Self::Literal(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::tokens::{Token, TokenType};
+    use crate::{
+        tok,
+        tokens::{Token, TokenType},
+    };
 
     use super::*;
 
     #[test]
     fn test_printer() {
-        let expr = Expr::Binary(ExprBinary {
-            op: Token::new(TokenType::Star),
-            left: Box::new(Expr::Unary(ExprUnary {
-                op: Token::new(TokenType::Minus),
-                right: Box::new(Expr::Literal(ExprLiteral {
-                    token: Token::new(TokenType::Number(123.)),
-                })),
-            })),
-            right: Box::new(Expr::Grouping(ExprGrouping {
-                inner: Box::new(Expr::Literal(ExprLiteral {
-                    token: Token::new(TokenType::Number(45.67)),
-                })),
-            })),
-        });
+        let expr: Expr = ExprBinary {
+            op: tok![*],
+            left: Box::new(
+                ExprUnary {
+                    op: tok![-],
+                    right: Box::new(ExprLiteral(tok![n:123]).into()),
+                }
+                .into(),
+            ),
+            right: Box::new(ExprGrouping(Box::new(ExprLiteral(tok![n:45.67]).into())).into()),
+        }
+        .into();
 
         assert_eq!("(* (- 123) (group 45.67))", format!("{}", expr));
     }
