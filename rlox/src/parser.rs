@@ -158,9 +158,9 @@ impl Parser {
         }
     }
 
-    fn matches(&mut self, pattern: &[TokenType]) -> Option<Token> {
+    fn matches(&mut self, patterns: &[TokenType]) -> Option<Token> {
         match self.peek() {
-            Some(tok) if pattern.contains(&tok.ty) => {
+            Some(tok) if patterns.contains(&tok.ty) => {
                 let tok = self
                     .advance()
                     .expect("peek has a value in this branch, it's safe to advance");
@@ -199,15 +199,98 @@ mod tests {
             tok![==],
             tok![n:42],
             tok![!=],
-            tok!['('],
             tok![n:69],
             tok![!=],
             tok![n:420],
+            tok![EOF],
+        ];
+        let expr = Parser::parse(tokens);
+
+        assert_eq!(expr.to_string(), "(!= (!= (== 42 42) 69) 420)")
+    }
+
+    #[test]
+    fn parse_comparison() {
+        let tokens = vec![
+            tok![n:42],
+            tok![<],
+            tok![n:69],
+            tok![<=],
+            tok![n:69],
+            tok![>],
+            tok![n:13],
+            tok![>=],
+            tok![n:420],
+            tok![EOF],
+        ];
+        let expr = Parser::parse(tokens);
+
+        assert_eq!(expr.to_string(), "(>= (> (<= (< 42 69) 69) 13) 420)");
+    }
+
+    #[test]
+    fn parse_term() {
+        let tokens = vec![
+            tok![n:42],
+            tok![-],
+            tok![n:69],
+            tok![+],
+            tok![n:420],
+            tok![EOF],
+        ];
+        let expr = Parser::parse(tokens);
+
+        assert_eq!(expr.to_string(), "(+ (- 42 69) 420)");
+    }
+
+    #[test]
+    fn parse_factor() {
+        let tokens = vec![
+            tok![n:42],
+            tok![/],
+            tok![n:69],
+            tok![*],
+            tok![n:420],
+            tok![EOF],
+        ];
+        let expr = Parser::parse(tokens);
+
+        assert_eq!(expr.to_string(), "(* (/ 42 69) 420)");
+    }
+
+    #[test]
+    fn parse_unary() {
+        let tokens = vec![tok![!], tok![-], tok![n:42], tok![EOF]];
+        let expr = Parser::parse(tokens);
+
+        assert_eq!(expr.to_string(), "(! (- 42))");
+    }
+
+    #[test]
+    fn test_precedence() {
+        let tokens = vec![
+            tok![n:42],
+            tok![+],
+            tok![-],
+            tok![n:69],
+            tok![*],
+            tok![n:420],
+            tok![==],
+            tok!['('],
+            tok![s:"wtv"],
+            tok![>],
+            tok![!],
+            tok![false],
+            tok![!=],
+            tok![nil],
             tok![')'],
             tok![EOF],
         ];
         let expr = Parser::parse(tokens);
 
-        assert_eq!(expr.to_string(), "(!= (== 42 42) (group (!= 69 420)))")
+        assert_eq!(
+            expr.to_string(),
+            "(== (+ 42 (* (- 69) 420)) (group (!= (> \"wtv\" (! false)) nil)))"
+        );
     }
 }
