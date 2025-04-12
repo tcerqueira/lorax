@@ -1,4 +1,7 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    any::Any,
+    fmt::{self, Display, Formatter},
+};
 
 use super::visitor::Visitor;
 use crate::tokens::Token;
@@ -21,8 +24,17 @@ pub struct ExprBinary {
 #[derive(Debug, PartialEq)]
 pub struct ExprGrouping(pub Box<Expr>);
 
-#[derive(Debug, PartialEq)]
-pub struct ExprLiteral(pub Token);
+#[derive(Debug)]
+pub struct ExprLiteral {
+    pub token: Token,
+    pub literal: Option<Box<dyn Any>>,
+}
+
+impl PartialEq for ExprLiteral {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct ExprUnary {
@@ -63,7 +75,7 @@ impl Visitor for AstPrinter<'_, '_> {
     }
 
     fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
-        write!(self.fmt, "{}", expr.0.ty)
+        write!(self.fmt, "{}", expr.token.ty)
     }
 
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
@@ -119,11 +131,26 @@ mod tests {
             left: Box::new(
                 ExprUnary {
                     op: tok![-],
-                    right: Box::new(ExprLiteral(tok![n:123]).into()),
+                    right: Box::new(
+                        ExprLiteral {
+                            token: (tok![n:123]),
+                            literal: None,
+                        }
+                        .into(),
+                    ),
                 }
                 .into(),
             ),
-            right: Box::new(ExprGrouping(Box::new(ExprLiteral(tok![n:45.67]).into())).into()),
+            right: Box::new(
+                ExprGrouping(Box::new(
+                    ExprLiteral {
+                        token: (tok![n:45.67]),
+                        literal: None,
+                    }
+                    .into(),
+                ))
+                .into(),
+            ),
         }
         .into();
 

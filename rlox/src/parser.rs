@@ -1,7 +1,7 @@
 mod expr;
 mod visitor;
 
-use std::collections::VecDeque;
+use std::{any::Any, collections::VecDeque};
 
 use crate::{error::CompileError, tokens::*};
 use expr::*;
@@ -129,7 +129,17 @@ impl Parser {
         match self.advance() {
             Some(
                 token_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
-            ) => ExprLiteral(token).into(),
+            ) => {
+                let literal: Option<Box<dyn Any>> = match token.ty {
+                    TokenType::Number(n) => Some(Box::new(n)),
+                    TokenType::String(ref s) => Some(Box::new(String::from(s.as_ref()))),
+                    TokenType::True => Some(Box::new(true)),
+                    TokenType::False => Some(Box::new(false)),
+                    TokenType::Nil => None,
+                    _ => unreachable!("matched these variants before"),
+                };
+                ExprLiteral { token, literal }.into()
+            }
             Some(token_pat!(TokenType::LeftParen)) => {
                 let inner = Box::new(self.expression());
                 let expr = ExprGrouping(inner).into();
@@ -149,11 +159,14 @@ impl Parser {
                 }
                 expr
             }
-            _ => ExprLiteral(Token {
-                ty: TokenType::Eof,
-                span: "".into(),
-                line: 0,
-            })
+            _ => ExprLiteral {
+                token: Token {
+                    ty: TokenType::Eof,
+                    span: "".into(),
+                    line: 0,
+                },
+                literal: None,
+            }
             .into(),
         }
     }
