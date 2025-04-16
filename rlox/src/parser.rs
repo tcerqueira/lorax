@@ -22,9 +22,11 @@ use expr::*;
 
 pub struct Parser {
     tokens: VecDeque<Token>,
+    eof: Token,
 }
 
-macro_rules! token_pat {
+/// Token type pattern matching helper
+macro_rules! tt_pat {
     ($bind:ident @ $pat:pat) => {
         $bind @ Token {
             ty: $pat,
@@ -40,22 +42,23 @@ macro_rules! token_pat {
 }
 
 impl Parser {
-    pub fn parse(mut tokens: Vec<Token>) -> Expr {
-        tokens.pop(); // ignore EOF
+    pub fn parse(mut tokens: Vec<Token>) -> Result<Expr, CompileError> {
+        let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
         let mut parser = Self {
             tokens: tokens.into(),
+            eof,
         };
-        parser.expression()
+        parser.expression().inspect_err(|e| eprintln!("{e}"))
     }
 
-    fn expression(&mut self) -> Expr {
+    fn expression(&mut self) -> Result<Expr, CompileError> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Expr {
-        let mut expr = self.comparison();
+    fn equality(&mut self) -> Result<Expr, CompileError> {
+        let mut expr = self.comparison()?;
         while let Some(op) = self.matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
-            let right = self.comparison();
+            let right = self.comparison()?;
             expr = ExprBinary {
                 op,
                 left: Box::new(expr),
@@ -63,11 +66,11 @@ impl Parser {
             }
             .into();
         }
-        expr
+        Ok(expr)
     }
 
-    fn comparison(&mut self) -> Expr {
-        let mut expr = self.term();
+    fn comparison(&mut self) -> Result<Expr, CompileError> {
+        let mut expr = self.term()?;
 
         while let Some(op) = self.matches(&[
             TokenType::Greater,
@@ -75,7 +78,7 @@ impl Parser {
             TokenType::Less,
             TokenType::LessEqual,
         ]) {
-            let right = self.term();
+            let right = self.term()?;
             expr = ExprBinary {
                 op,
                 left: Box::new(expr),
@@ -83,13 +86,13 @@ impl Parser {
             }
             .into();
         }
-        expr
+        Ok(expr)
     }
 
-    fn term(&mut self) -> Expr {
-        let mut expr = self.factor();
+    fn term(&mut self) -> Result<Expr, CompileError> {
+        let mut expr = self.factor()?;
         while let Some(op) = self.matches(&[TokenType::Minus, TokenType::Plus]) {
-            let right = self.factor();
+            let right = self.factor()?;
             expr = ExprBinary {
                 op,
                 left: Box::new(expr),
@@ -97,13 +100,13 @@ impl Parser {
             }
             .into();
         }
-        expr
+        Ok(expr)
     }
 
-    fn factor(&mut self) -> Expr {
-        let mut expr = self.unary();
+    fn factor(&mut self) -> Result<Expr, CompileError> {
+        let mut expr = self.unary()?;
         while let Some(op) = self.matches(&[TokenType::Slash, TokenType::Star]) {
-            let right = self.unary();
+            let right = self.unary()?;
             expr = ExprBinary {
                 op,
                 left: Box::new(expr),
@@ -111,24 +114,25 @@ impl Parser {
             }
             .into();
         }
-        expr
+        Ok(expr)
     }
 
-    fn unary(&mut self) -> Expr {
-        match self.matches(&[TokenType::Bang, TokenType::Minus]) {
+    fn unary(&mut self) -> Result<Expr, CompileError> {
+        let expr = match self.matches(&[TokenType::Bang, TokenType::Minus]) {
             Some(op) => ExprUnary {
                 op,
-                right: Box::new(self.unary()),
+                right: Box::new(self.unary()?),
             }
             .into(),
-            None => self.primary(),
-        }
+            None => self.primary()?,
+        };
+        Ok(expr)
     }
 
-    fn primary(&mut self) -> Expr {
-        match self.advance() {
+    fn primary(&mut self) -> Result<Expr, CompileError> {
+        let expr = match self.advance() {
             Some(
-                token_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
+                tt_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
             ) => {
                 let literal: Option<Box<dyn Any>> = match token.ty {
                     TokenType::Number(n) => Some(Box::new(n)),
@@ -140,34 +144,38 @@ impl Parser {
                 };
                 ExprLiteral { token, literal }.into()
             }
-            Some(token_pat!(TokenType::LeftParen)) => {
-                let inner = Box::new(self.expression());
+            Some(tt_pat!(TokenType::LeftParen)) => {
+                let inner = Box::new(self.expression()?);
                 let expr = ExprGrouping(inner).into();
-                match self.advance() {
-                    Some(token_pat!(TokenType::RightParen)) => {}
-                    Some(tok) => {
-                        eprintln!("{}", CompileError::expected(TokenType::RightParen, tok))
-                    }
-                    None => eprintln!(
-                        "{}",
-                        CompileError {
-                            line: 0,
-                            span: "".into(),
-                            message: "Expected ')', found end of file".into(),
-                        }
-                    ),
-                }
+                self.consume(TokenType::RightParen)?;
                 expr
             }
-            _ => ExprLiteral {
-                token: Token {
-                    ty: TokenType::Eof,
-                    span: "".into(),
-                    line: 0,
+            Some(tok) => return Err(CompileError::expected("expression", &tok)),
+            None => return Err(CompileError::expected("expression", &self.eof)),
+        };
+        Ok(expr)
+    }
+
+    fn synchronize(&mut self) {
+        while let Some(tok) = self.advance() {
+            match tok {
+                tt_pat!(TokenType::Semicolon) => return,
+                _ => match self.peek() {
+                    Some(
+                        tt_pat!(
+                            TokenType::Class
+                                | TokenType::For
+                                | TokenType::Fun
+                                | TokenType::If
+                                | TokenType::Print
+                                | TokenType::Return
+                                | TokenType::Var
+                                | TokenType::While
+                        ),
+                    ) => return,
+                    _ => continue,
                 },
-                literal: None,
             }
-            .into(),
         }
     }
 
@@ -180,6 +188,14 @@ impl Parser {
                 Some(tok)
             }
             _ => None,
+        }
+    }
+
+    fn consume(&mut self, pattern: TokenType) -> Result<Token, CompileError> {
+        match self.advance() {
+            Some(tok) if pattern == tok.ty => Ok(tok),
+            Some(tok) => Err(CompileError::expected(pattern, &tok)),
+            None => Err(CompileError::expected(pattern, &self.eof)),
         }
     }
 
@@ -200,7 +216,7 @@ mod tests {
     #[test]
     fn parse_grouping() {
         let tokens = vec![tok!['('], tok![n:42], tok![')'], tok![EOF]];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(group 42)")
     }
@@ -217,7 +233,7 @@ mod tests {
             tok![n:420],
             tok![EOF],
         ];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(!= (!= (== 42 42) 69) 420)")
     }
@@ -236,7 +252,7 @@ mod tests {
             tok![n:420],
             tok![EOF],
         ];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
@@ -251,7 +267,7 @@ mod tests {
             tok![n:420],
             tok![EOF],
         ];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(+ (- 42 69) 420)");
     }
@@ -266,7 +282,7 @@ mod tests {
             tok![n:420],
             tok![EOF],
         ];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(* (/ 42 69) 420)");
     }
@@ -274,7 +290,7 @@ mod tests {
     #[test]
     fn parse_unary() {
         let tokens = vec![tok![!], tok![-], tok![n:42], tok![EOF]];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(expr.to_string(), "(! (- 42))");
     }
@@ -299,7 +315,7 @@ mod tests {
             tok![')'],
             tok![EOF],
         ];
-        let expr = Parser::parse(tokens);
+        let expr = Parser::parse(tokens).unwrap();
 
         assert_eq!(
             expr.to_string(),

@@ -1,6 +1,8 @@
+use std::fmt::Display;
+
 use thiserror::Error;
 
-use crate::tokens::{Token, TokenType};
+use crate::tokens::Token;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -41,10 +43,10 @@ pub struct CompileError {
 }
 
 impl CompileError {
-    pub fn expected(expected: TokenType, found: Token) -> Self {
+    pub fn expected(expected: impl Display, found: &Token) -> Self {
         Self {
             line: found.line,
-            span: found.span.into(),
+            span: found.span.as_ref().into(),
             message: format!("Expected '{}', found '{}'", expected, found.ty),
         }
     }

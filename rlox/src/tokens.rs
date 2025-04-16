@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single charecter tokens
     LeftParen,
@@ -48,7 +48,7 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub ty: TokenType,
     pub span: Box<str>,
@@ -96,7 +96,7 @@ impl Display for TokenType {
             TokenType::True => write!(f, "true"),
             TokenType::Var => write!(f, "var"),
             TokenType::While => write!(f, "while"),
-            TokenType::Eof => write!(f, "^D"),
+            TokenType::Eof => write!(f, "end of file"),
         }
     }
 }

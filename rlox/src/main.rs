@@ -8,6 +8,7 @@ use std::{
 use anyhow::Context;
 
 use error::*;
+use parser::Parser;
 use scanner::*;
 
 mod error;
@@ -45,28 +46,20 @@ fn run_prompt() -> crate::Result<()> {
         if read == 0 {
             break;
         }
-        run(line)?;
+        let _ = run(line);
     }
     Ok(())
 }
 
 fn run(source: String) -> crate::Result<()> {
     let scanner = Scanner::new(&source);
+    let tokens = scanner
+        .scan_tokens()
+        .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
+    let expr = Parser::parse(tokens)?;
 
-    match scanner.scan_tokens() {
-        Ok(tokens) => {
-            for token in tokens {
-                println!("{token:?}");
-            }
-            Ok(())
-        }
-        Err(errs) => {
-            for err in &errs {
-                eprintln!("{err}");
-            }
-            Err(Error::Compile(errs))
-        }
-    }
+    println!("{expr}");
+    Ok(())
 }
 
 impl Termination for Error {
