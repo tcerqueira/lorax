@@ -8,10 +8,12 @@ use std::{
 use anyhow::Context;
 
 use error::*;
-use parser::Parser;
+use interpreter::*;
+use parser::*;
 use scanner::*;
 
 mod error;
+mod interpreter;
 mod parser;
 mod scanner;
 mod tokens;
@@ -58,7 +60,11 @@ fn run(source: String) -> crate::Result<()> {
         .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
     let expr = Parser::parse(tokens)?;
 
-    println!("{expr}");
+    let mut interpreter = Interpreter;
+    interpreter
+        .interpret(&expr)
+        .inspect_err(|e| eprint!("{e}"))?;
+
     Ok(())
 }
 
@@ -67,6 +73,7 @@ impl Termination for Error {
         match self {
             Error::Cli => ExitCode::from(64),
             Error::Compile { .. } => ExitCode::from(65),
+            Error::Runtime(_) => ExitCode::from(70),
             Error::Other(_) => ExitCode::FAILURE,
         }
     }

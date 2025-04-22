@@ -1,10 +1,12 @@
-mod expr;
-mod visitor;
+pub mod expr;
+pub mod object;
+pub mod visitor;
 
-use std::{any::Any, collections::VecDeque};
+use std::collections::VecDeque;
 
 use crate::{error::CompileError, tokens::*};
 use expr::*;
+use object::Object;
 
 // expression   => equality;
 // equality     => comparison ( ("!=" | "==") comparison )*;
@@ -26,6 +28,7 @@ pub struct Parser {
 }
 
 /// Token type pattern matching helper
+#[macro_export]
 macro_rules! tt_pat {
     ($bind:ident @ $pat:pat) => {
         $bind @ Token {
@@ -134,12 +137,12 @@ impl Parser {
             Some(
                 tt_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
             ) => {
-                let literal: Option<Box<dyn Any>> = match token.ty {
-                    TokenType::Number(n) => Some(Box::new(n)),
-                    TokenType::String(ref s) => Some(Box::new(String::from(s.as_ref()))),
-                    TokenType::True => Some(Box::new(true)),
-                    TokenType::False => Some(Box::new(false)),
-                    TokenType::Nil => None,
+                let literal: Object = match token.ty {
+                    TokenType::Number(n) => Object::new(n),
+                    TokenType::String(ref s) => Object::new(String::from(s.as_ref())),
+                    TokenType::True => Object::new(true),
+                    TokenType::False => Object::new(false),
+                    TokenType::Nil => Object::nil(),
                     _ => unreachable!("matched these variants before"),
                 };
                 ExprLiteral { token, literal }.into()
@@ -156,6 +159,7 @@ impl Parser {
         Ok(expr)
     }
 
+    #[expect(dead_code)]
     fn synchronize(&mut self) {
         while let Some(tok) = self.advance() {
             match tok {

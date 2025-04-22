@@ -11,6 +11,8 @@ pub enum Error {
     #[error("{n} errors:\n{list}", n = .0.len(), list = display_compile_errors(.0))]
     Compile(Vec<CompileError>),
     #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+    #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 
@@ -43,11 +45,38 @@ pub struct CompileError {
 }
 
 impl CompileError {
+    #[expect(dead_code)]
+    pub fn custom(token: &Token, message: String) -> Self {
+        Self {
+            line: token.line,
+            span: token.span.as_ref().into(),
+            message,
+        }
+    }
+
     pub fn expected(expected: impl Display, found: &Token) -> Self {
         Self {
             line: found.line,
             span: found.span.as_ref().into(),
             message: format!("Expected '{}', found '{}'", expected, found.ty),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("[line {line}] Error \"{span}\": {message}")]
+pub struct RuntimeError {
+    pub line: u32,
+    pub span: String,
+    pub message: String,
+}
+
+impl RuntimeError {
+    pub fn custom(token: &Token, message: impl Display) -> Self {
+        Self {
+            line: token.line,
+            span: token.span.as_ref().into(),
+            message: format!("{message}"),
         }
     }
 }

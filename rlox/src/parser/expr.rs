@@ -1,9 +1,6 @@
-use std::{
-    any::Any,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Debug, Display, Formatter};
 
-use super::visitor::Visitor;
+use super::{object::Object, visitor::Visitor};
 use crate::tokens::Token;
 
 #[derive(Debug, PartialEq)]
@@ -27,7 +24,7 @@ pub struct ExprGrouping(pub Box<Expr>);
 #[derive(Debug)]
 pub struct ExprLiteral {
     pub token: Token,
-    pub literal: Option<Box<dyn Any>>,
+    pub literal: Object,
 }
 
 impl PartialEq for ExprLiteral {
@@ -134,7 +131,7 @@ mod tests {
                     right: Box::new(
                         ExprLiteral {
                             token: (tok![n:123]),
-                            literal: None,
+                            literal: Object::nil(),
                         }
                         .into(),
                     ),
@@ -145,7 +142,7 @@ mod tests {
                 ExprGrouping(Box::new(
                     ExprLiteral {
                         token: (tok![n:45.67]),
-                        literal: None,
+                        literal: Object::nil(),
                     }
                     .into(),
                 ))
