@@ -60,10 +60,10 @@ fn run(source: String) -> crate::Result<()> {
         .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
     let expr = Parser::parse(tokens)?;
 
-    let mut interpreter = Interpreter;
-    interpreter
+    let value = Interpreter
         .interpret(&expr)
         .inspect_err(|e| eprintln!("{e}"))?;
+    print!("{value}");
 
     Ok(())
 }

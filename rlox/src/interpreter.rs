@@ -76,13 +76,69 @@ impl Visitor for Interpreter {
 }
 
 impl Interpreter {
-    pub fn interpret(&mut self, expr: &Expr) -> Result<(), RuntimeError> {
-        let value = self.evaluate(expr)?;
-        print!("{value}");
-        Ok(())
+    pub fn interpret(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
+        self.evaluate(expr)
     }
 
     fn evaluate(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
         expr.accept(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{parser::Parser, scanner::Scanner};
+
+    use super::*;
+
+    fn expr(source: &str) -> Expr {
+        let scanner = Scanner::new(source);
+        let tokens = scanner
+            .scan_tokens()
+            .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
+            .expect("token error");
+        Parser::parse(tokens)
+            .inspect_err(|e| eprintln!("{e}"))
+            .expect("syntax error")
+    }
+
+    #[test]
+    fn interpret_unary_bang() -> anyhow::Result<()> {
+        let ast = expr("!9");
+        let value = Interpreter.interpret(&ast)?;
+        assert!(!*value.downcast::<bool>());
+
+        let ast = expr("!\"hello\"");
+        let value = Interpreter.interpret(&ast)?;
+        assert!(!*value.downcast::<bool>());
+
+        let ast = expr("!-0");
+        let value = Interpreter.interpret(&ast)?;
+        assert!(!*value.downcast::<bool>());
+
+        let ast = expr("!false");
+        let value = Interpreter.interpret(&ast)?;
+        assert!(*value.downcast::<bool>());
+
+        let ast = expr("!(1 - 1)");
+        let value = Interpreter.interpret(&ast)?;
+        assert!(!*value.downcast::<bool>());
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_unary_minus() -> anyhow::Result<()> {
+        let ast = expr("-1");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<f64>(), -1.);
+
+        let ast = expr("--1");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<f64>(), 1.);
+
+        let ast = expr("-(-1 - 2)");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<f64>(), 3.);
+        Ok(())
     }
 }
