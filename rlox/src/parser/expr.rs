@@ -48,7 +48,18 @@ impl Expr {
             Expr::Unary(expr_unary) => visitor.visit_unary(expr_unary),
         }
     }
+
+    // pub fn polish_notation() -> String {
+    //     let fmt = Forma
+    //     let mut printer = AstPrinter {fmt: }
+    // }
 }
+
+// impl Display for Expr {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         todo!()
+//     }
+// }
 
 pub struct AstPrinter<'a, 'f> {
     pub fmt: &'a mut Formatter<'f>,

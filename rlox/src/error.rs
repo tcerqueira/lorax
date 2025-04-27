@@ -71,6 +71,7 @@ pub struct RuntimeError {
     pub message: String,
 }
 
+// TODO: use expr instead of token for better context reporting
 impl RuntimeError {
     pub fn custom(token: &Token, message: impl Display) -> Self {
         Self {

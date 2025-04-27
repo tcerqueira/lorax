@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     fmt::{Debug, Display},
-    ops::{Deref, DerefMut},
+    ops::{Add, Deref, DerefMut, Div, Mul, Neg, Not, Sub},
     rc::Rc,
 };
 
@@ -32,7 +32,7 @@ impl Object {
         Self(None)
     }
 
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub fn downcast<T: Any>(&self) -> &T {
         (self.as_deref().unwrap() as &dyn Any)
             .downcast_ref::<T>()
@@ -54,6 +54,81 @@ impl Object {
             Err(e) if e.is_nil() => false,
             Err(_) => true,
         }
+    }
+}
+
+impl Add for Object {
+    type Output = Result<Object, OpError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if let (Ok(left), Ok(right)) = (self.try_downcast::<f64>(), rhs.try_downcast::<f64>()) {
+            return Ok(Object::new(left + right));
+        }
+        if let (Ok(left), Ok(right)) = (self.try_downcast::<String>(), rhs.try_downcast::<String>())
+        {
+            return Ok(Object::new(format!("{left}{right}")));
+        }
+        Err(OpError::InvalidOperand(
+            "Objects not both String or f64".into(),
+        ))
+    }
+}
+
+impl Sub for Object {
+    type Output = Result<Object, OpError>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let left = self.try_downcast::<f64>()?;
+        let right = rhs.try_downcast::<f64>()?;
+        Ok(Object::new(left - right))
+    }
+}
+
+impl Mul for Object {
+    type Output = Result<Object, OpError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let left = self.try_downcast::<f64>()?;
+        let right = rhs.try_downcast::<f64>()?;
+        Ok(Object::new(left * right))
+    }
+}
+
+impl Div for Object {
+    type Output = Result<Object, OpError>;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        let left = self.try_downcast::<f64>()?;
+        let right = rhs.try_downcast::<f64>()?;
+        Ok(Object::new(left / right))
+    }
+}
+
+impl Neg for Object {
+    type Output = Result<Object, OpError>;
+
+    fn neg(self) -> Self::Output {
+        Ok(Object::new(-self.try_downcast::<f64>()?))
+    }
+}
+
+impl Not for Object {
+    type Output = Object;
+
+    fn not(self) -> Self::Output {
+        Object::new(!self.is_truthy())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum OpError {
+    #[error("Invalid operand: {}", .0)]
+    InvalidOperand(String),
+}
+
+impl<T> From<DowncastError<T>> for OpError {
+    fn from(err: DowncastError<T>) -> Self {
+        OpError::InvalidOperand(err.to_string())
     }
 }
 

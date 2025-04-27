@@ -16,37 +16,13 @@ impl Visitor for Interpreter {
     fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
         let left = self.evaluate(&expr.left)?;
         let right = self.evaluate(&expr.right)?;
+        let err_handler = |e| RuntimeError::custom(&expr.op, e);
 
         let value = match expr.op.ty {
-            ref op @ (TokenType::Minus | TokenType::Slash | TokenType::Star) => {
-                let err_handler =
-                    |e| RuntimeError::custom(&expr.op, format!("Invalid operand: {e}"));
-                let left = left.try_downcast::<f64>().map_err(err_handler)?;
-                let right = right.try_downcast::<f64>().map_err(err_handler)?;
-                Object::new(match op {
-                    TokenType::Minus => left - right,
-                    TokenType::Slash => left / right,
-                    TokenType::Star => left * right,
-                    _ => unreachable!(),
-                })
-            }
-            TokenType::Plus => {
-                if let (Ok(left), Ok(right)) =
-                    (left.try_downcast::<f64>(), right.try_downcast::<f64>())
-                {
-                    Object::new(left + right)
-                } else if let (Ok(left), Ok(right)) = (
-                    left.try_downcast::<String>(),
-                    right.try_downcast::<String>(),
-                ) {
-                    Object::new(format!("{left}{right}"))
-                } else {
-                    return Err(RuntimeError::custom(
-                        &expr.op,
-                        "Invalid operands: Objects not both String or f64",
-                    ));
-                }
-            }
+            TokenType::Plus => (left + right).map_err(err_handler)?,
+            TokenType::Minus => (left - right).map_err(err_handler)?,
+            TokenType::Star => (left * right).map_err(err_handler)?,
+            TokenType::Slash => (left / right).map_err(err_handler)?,
             _ => panic!("Unexpected binary operator: {:?}", expr.op),
         };
 
@@ -139,6 +115,40 @@ mod tests {
         let ast = expr("-(-1 - 2)");
         let value = Interpreter.interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), 3.);
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_unary_minus_err() -> anyhow::Result<()> {
+        let ast = expr("-\"h\"");
+        Interpreter
+            .interpret(&ast)
+            .expect_err("can't negate strings");
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_binary_plus() -> anyhow::Result<()> {
+        let ast = expr("1 + 2");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<f64>(), 3.);
+
+        let ast = expr("\"Hello\" + \" \" + \"World!\"");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<String>(), "Hello World!");
+
+        let ast = expr("1 + -2");
+        let value = Interpreter.interpret(&ast)?;
+        assert_eq!(*value.downcast::<f64>(), -1.);
+        Ok(())
+    }
+
+    #[test]
+    fn interpret_binary_plus_err() -> anyhow::Result<()> {
+        let ast = expr("\"h\" + 1");
+        Interpreter
+            .interpret(&ast)
+            .expect_err("can't add strings and numbers");
         Ok(())
     }
 }
