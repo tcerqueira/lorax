@@ -33,13 +33,13 @@ impl Object {
     }
 
     #[expect(dead_code)]
-    pub fn downcast<T: 'static>(&self) -> &T {
+    pub fn downcast<T: Any>(&self) -> &T {
         (self.as_deref().unwrap() as &dyn Any)
             .downcast_ref::<T>()
             .unwrap()
     }
 
-    pub fn try_downcast<T: 'static>(&self) -> Result<&T, DowncastError<T>> {
+    pub fn try_downcast<T: Any>(&self) -> Result<&T, DowncastError<T>> {
         match self.as_deref() {
             None => Err(DowncastError::new(true)),
             Some(obj) => (obj as &dyn Any)
@@ -79,8 +79,8 @@ impl<T> DowncastError<T> {
 impl<T> Display for DowncastError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.is_nil() {
-            true => writeln!(f, "Object is nil"),
-            false => writeln!(f, "Object is not of type {}", std::any::type_name::<T>()),
+            true => write!(f, "Object is nil"),
+            false => write!(f, "Object is not of type {}", std::any::type_name::<T>()),
         }
     }
 }

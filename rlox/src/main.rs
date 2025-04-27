@@ -63,7 +63,7 @@ fn run(source: String) -> crate::Result<()> {
     let mut interpreter = Interpreter;
     interpreter
         .interpret(&expr)
-        .inspect_err(|e| eprint!("{e}"))?;
+        .inspect_err(|e| eprintln!("{e}"))?;
 
     Ok(())
 }
