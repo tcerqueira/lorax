@@ -1,6 +1,6 @@
 use std::fmt::{self, Debug, Display};
 
-use super::{object::Object, visitor::Visitor};
+use super::{object::Object, visitor::ExprVisitor};
 use crate::{span::Span, tokens::Token};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +40,7 @@ pub struct ExprUnary {
 }
 
 impl Expr {
-    pub fn accept<R>(&self, visitor: &mut impl Visitor<T = R>) -> R {
+    pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
         match self {
             Expr::Binary(expr_binary) => visitor.visit_binary(expr_binary),
             Expr::Grouping(expr_grouping) => visitor.visit_grouping(expr_grouping),
@@ -73,15 +73,15 @@ impl Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.accept(&mut ReportPrinter { fmt: f })
+        self.accept(&mut StdPrinter { fmt: f })
     }
 }
 
-struct ReportPrinter<'a, 'f> {
+struct StdPrinter<'a, 'f> {
     fmt: &'a mut fmt::Formatter<'f>,
 }
 
-impl Visitor for ReportPrinter<'_, '_> {
+impl ExprVisitor for StdPrinter<'_, '_> {
     type T = fmt::Result;
 
     fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
@@ -110,7 +110,7 @@ pub struct AstPrinter<'a, 'f> {
     pub fmt: &'a mut fmt::Formatter<'f>,
 }
 
-impl Visitor for AstPrinter<'_, '_> {
+impl ExprVisitor for AstPrinter<'_, '_> {
     type T = fmt::Result;
 
     fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {

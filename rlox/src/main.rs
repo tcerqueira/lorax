@@ -55,16 +55,17 @@ fn run_prompt() -> crate::Result<()> {
 }
 
 fn run(source: String) -> crate::Result<()> {
-    let scanner = Scanner::new(&source);
-    let tokens = scanner
+    let tokens = Scanner::new(&source)
         .scan_tokens()
         .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
-    let expr = Parser::parse(&source, tokens)?;
 
-    let value = Interpreter::new(&source)
-        .interpret(&expr)
+    let program = Parser::new(&source, tokens)
+        .parse()
         .inspect_err(|e| eprintln!("{e}"))?;
-    print!("{value}");
+
+    Interpreter::new(&source)
+        .interpret(program)
+        .inspect_err(|e| eprintln!("{e}"))?;
 
     Ok(())
 }

@@ -38,7 +38,11 @@ impl<'s> Scanner<'s> {
 
         self.tokens.push(Token {
             ty: TokenType::Eof,
-            span: Span::default(),
+            span: Span {
+                line_start: self.line,
+                line_end: self.line,
+                ..Default::default()
+            },
         });
         Ok(self.tokens)
     }

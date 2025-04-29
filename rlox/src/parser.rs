@@ -1,5 +1,6 @@
 pub mod expr;
 pub mod object;
+pub mod stmt;
 pub mod visitor;
 
 use std::collections::VecDeque;
@@ -7,20 +8,28 @@ use std::collections::VecDeque;
 use crate::{error::CompileError, tokens::*};
 use expr::*;
 use object::Object;
+use stmt::*;
 
-// expression   => equality;
-// equality     => comparison ( ("!=" | "==") comparison )*;
-// comparison   => term ( (">" | ">=" | "<" | "<=") term )*;
-// term         => factor ( ("-" | "+") factor )*;
-// factor       => unary ( ("/" | "*") unary )*;
-// unary        => ("!" | "-") unary
-//              | primary;
-// primary      => NUMBER
-//              | STRING
-//              | "true"
-//              | "false"
-//              | "nil"
-//              | "(" expression ")";
+// program          => statement* EOF;
+//
+// statement        => exprStmt | printStmt;
+// exprStmt         => expression ";";
+// printStmt        => "print" expression ";";
+//
+// expression       => equality;
+// equality         => comparison ( ("!=" | "==") comparison )*;
+// comparison       => term ( (">" | ">=" | "<" | "<=") term )*;
+// term             => factor ( ("-" | "+") factor )*;
+// factor           => unary ( ("/" | "*") unary )*;
+// unary            => ("!" | "-") unary
+//                  | primary;
+//
+// primary          => NUMBER
+//                  | STRING
+//                  | "true"
+//                  | "false"
+//                  | "nil"
+//                  | "(" expression ")";
 
 pub struct Parser<'s> {
     src: &'s str,
@@ -46,17 +55,45 @@ macro_rules! tt_pat {
 }
 
 impl<'s> Parser<'s> {
-    pub fn parse(source: &'s str, mut tokens: Vec<Token>) -> Result<Expr, CompileError> {
+    pub fn new(source: &'s str, mut tokens: Vec<Token>) -> Self {
         let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
-        let mut parser = Self {
+        Self {
             src: source,
             tokens: tokens.into(),
             eof,
-        };
-        parser.expression().inspect_err(|e| eprintln!("{e}"))
+        }
     }
 
-    fn expression(&mut self) -> Result<Expr, CompileError> {
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, CompileError> {
+        let mut stmts = vec![];
+        while self.peek().is_some() {
+            let stmt = self.statement()?;
+            stmts.push(stmt);
+        }
+        Ok(stmts)
+    }
+
+    fn statement(&mut self) -> Result<Stmt, CompileError> {
+        match self.peek() {
+            Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
+            _ => self.expression_stmt(),
+        }
+    }
+
+    fn expression_stmt(&mut self) -> Result<Stmt, CompileError> {
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        Ok(StmtExpression { expr }.into())
+    }
+
+    fn print_stmt(&mut self) -> Result<Stmt, CompileError> {
+        let print_token = self.consume(TokenType::Print)?;
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        Ok(StmtPrint { print_token, expr }.into())
+    }
+
+    pub(crate) fn expression(&mut self) -> Result<Expr, CompileError> {
         self.equality()
     }
 
@@ -223,7 +260,7 @@ mod tests {
     fn parse_grouping() {
         let src = "(42)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(group 42)")
     }
@@ -233,7 +270,7 @@ mod tests {
         let src = "42 == 42 != 69 != 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(!= (!= (== 42 42) 69) 420)")
     }
@@ -243,7 +280,7 @@ mod tests {
         let src = "42 < 69 <= 69 > 13 >= 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
@@ -253,7 +290,7 @@ mod tests {
         let src = "42 - 69 + 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(+ (- 42 69) 420)");
     }
@@ -263,7 +300,7 @@ mod tests {
         let src = "42 / 69 * 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(* (/ 42 69) 420)");
     }
@@ -273,7 +310,7 @@ mod tests {
         let src = "!-42";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(! (- 42))");
     }
@@ -283,7 +320,7 @@ mod tests {
         let src = "42 + -69 * 420 == (\"wtv\" > !false != nil)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::parse(src, tokens).unwrap();
+        let expr = Parser::new(src, tokens).expression().unwrap();
 
         assert_eq!(
             expr.polish_notation(),
