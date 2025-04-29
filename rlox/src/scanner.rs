@@ -1,10 +1,12 @@
 use crate::error::CompileError;
+use crate::span::*;
 use crate::tokens::*;
 
 pub struct Scanner<'s> {
     tokens: Vec<Token>,
     source: &'s str,
     curr: usize,
+    global_curr: usize,
     line: u32,
 }
 
@@ -14,6 +16,7 @@ impl<'s> Scanner<'s> {
             tokens: vec![],
             source,
             curr: 0,
+            global_curr: 0,
             line: 1,
         }
     }
@@ -35,8 +38,7 @@ impl<'s> Scanner<'s> {
 
         self.tokens.push(Token {
             ty: TokenType::Eof,
-            span: "".into(),
-            line: self.line,
+            span: Span::default(),
         });
         Ok(self.tokens)
     }
@@ -154,7 +156,7 @@ impl<'s> Scanner<'s> {
     fn matches(&mut self, expected: char) -> bool {
         match self.peek() {
             Some(c) if c == expected => {
-                self.curr += c.len_utf8();
+                self.increment_curr(c.len_utf8());
                 true
             }
             _ => false,
@@ -167,13 +169,13 @@ impl<'s> Scanner<'s> {
             .chars()
             .next()
             .expect("advance assumes there's a character to consume");
-        self.curr += c.len_utf8();
+        self.increment_curr(c.len_utf8());
         c
     }
 
     fn advance_checked(&mut self) -> Option<char> {
         let c = self.rest_span().chars().next()?;
-        self.curr += c.len_utf8();
+        self.increment_curr(c.len_utf8());
         Some(c)
     }
 
@@ -188,8 +190,7 @@ impl<'s> Scanner<'s> {
     fn add_token(&mut self, token: TokenType) {
         self.tokens.push(Token {
             ty: token,
-            span: self.curr_span().into(),
-            line: self.line,
+            span: self.make_span(),
         });
     }
 
@@ -199,6 +200,20 @@ impl<'s> Scanner<'s> {
 
     fn rest_span(&self) -> &'s str {
         &self.source[self.curr..]
+    }
+
+    fn increment_curr(&mut self, inc: usize) {
+        self.curr += inc;
+        self.global_curr += inc;
+    }
+
+    fn make_span(&self) -> Span {
+        Span {
+            start: self.global_curr - self.curr_span().len(),
+            end: self.global_curr,
+            line_start: self.line,
+            line_end: self.line,
+        }
     }
 }
 
@@ -229,15 +244,22 @@ mod tests {
     use super::*;
     use crate::tok;
 
+    fn tokens_eq(actual: &[Token], expected: &[Token]) -> bool {
+        fn m(t: &Token) -> &TokenType {
+            &t.ty
+        }
+        Iterator::eq(actual.iter().map(m), expected.iter().map(m))
+    }
+
     #[test]
     fn test_single_char() {
         let source = "(){},-+.;*";
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &[
                 tok!['('],
                 tok![')'],
                 tok!['{'],
@@ -250,7 +272,7 @@ mod tests {
                 tok![*],
                 tok![EOF],
             ]
-        )
+        ));
     }
 
     #[test]
@@ -259,9 +281,9 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &[
                 tok![=],
                 tok![!],
                 tok![<],
@@ -272,7 +294,7 @@ mod tests {
                 tok![==],
                 tok![EOF],
             ]
-        )
+        ));
     }
 
     #[test]
@@ -281,9 +303,9 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &[
                 tok![!],
                 tok![=],
                 tok![>],
@@ -292,7 +314,7 @@ mod tests {
                 tok!(=, 2),
                 tok!(EOF, 3),
             ]
-        )
+        ));
     }
 
     #[test]
@@ -301,16 +323,16 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &[
                 tok!(/, 2),
                 tok!(=, 2),
                 tok!('(', 2),
                 tok!(')', 2),
                 tok!(EOF, 2),
             ]
-        )
+        ));
     }
 
     #[test]
@@ -319,16 +341,16 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &[
                 tok![
                     s: "this string should ignore these // \n!= ()",
                     2
                 ],
-                tok!(EOF, 2),
+                tok!(EOF, 2)
             ]
-        )
+        ));
     }
 
     #[test]
@@ -337,16 +359,16 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &vec![
                 tok![n: 1234567890],
                 tok![n: 0.123],
                 tok![n: 123.0],
                 tok![n: 0.3],
                 tok![EOF],
             ]
-        )
+        ));
     }
 
     #[test]
@@ -355,9 +377,9 @@ mod tests {
         let scanner = Scanner::new(source);
         let tokens = scanner.scan_tokens().unwrap();
 
-        assert_eq!(
-            tokens,
-            vec![
+        assert!(tokens_eq(
+            &tokens,
+            &vec![
                 tok![id: "_hello123world"],
                 tok![id: "_and2"],
                 tok![id: "or_"],
@@ -365,6 +387,6 @@ mod tests {
                 tok![return],
                 tok![EOF],
             ]
-        )
+        ));
     }
 }

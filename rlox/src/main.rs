@@ -16,6 +16,7 @@ mod error;
 mod interpreter;
 mod parser;
 mod scanner;
+mod span;
 mod tokens;
 
 type Result<T> = ::std::result::Result<T, Error>;
@@ -58,9 +59,9 @@ fn run(source: String) -> crate::Result<()> {
     let tokens = scanner
         .scan_tokens()
         .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
-    let expr = Parser::parse(tokens)?;
+    let expr = Parser::parse(&source, tokens)?;
 
-    let value = Interpreter
+    let value = Interpreter::new(&source)
         .interpret(&expr)
         .inspect_err(|e| eprintln!("{e}"))?;
     print!("{value}");

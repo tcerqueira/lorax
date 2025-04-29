@@ -1,9 +1,9 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use std::fmt::{self, Debug, Display};
 
 use super::{object::Object, visitor::Visitor};
-use crate::tokens::Token;
+use crate::{span::Span, tokens::Token};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Binary(ExprBinary),
     Grouping(ExprGrouping),
@@ -11,17 +11,17 @@ pub enum Expr {
     Unary(ExprUnary),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprBinary {
     pub op: Token,
     pub left: Box<Expr>,
     pub right: Box<Expr>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprGrouping(pub Box<Expr>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExprLiteral {
     pub token: Token,
     pub literal: Object,
@@ -33,7 +33,7 @@ impl PartialEq for ExprLiteral {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprUnary {
     pub op: Token,
     pub right: Box<Expr>,
@@ -49,20 +49,65 @@ impl Expr {
         }
     }
 
-    // pub fn polish_notation() -> String {
-    //     let fmt = Forma
-    //     let mut printer = AstPrinter {fmt: }
-    // }
+    pub fn span(&self) -> Span {
+        match self {
+            Expr::Binary(e) => e.left.span().join(&e.right.span()),
+            Expr::Grouping(e) => e.0.span(),
+            Expr::Literal(e) => e.token.span.clone(),
+            Expr::Unary(e) => e.op.span.join(&e.right.span()),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn polish_notation(&self) -> String {
+        struct PolishNotation<'a>(&'a Expr);
+        impl Display for PolishNotation<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.accept(&mut AstPrinter { fmt: f })
+            }
+        }
+
+        PolishNotation(self).to_string()
+    }
 }
 
-// impl Display for Expr {
-//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-//         todo!()
-//     }
-// }
+impl Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.accept(&mut ReportPrinter { fmt: f })
+    }
+}
+
+struct ReportPrinter<'a, 'f> {
+    fmt: &'a mut fmt::Formatter<'f>,
+}
+
+impl Visitor for ReportPrinter<'_, '_> {
+    type T = fmt::Result;
+
+    fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
+        expr.left.accept(self)?;
+        write!(self.fmt, " {} ", expr.op.ty)?;
+        expr.right.accept(self)
+    }
+
+    fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
+        write!(self.fmt, "(")?;
+        expr.0.accept(self)?;
+        write!(self.fmt, ")")
+    }
+
+    fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
+        write!(self.fmt, "{}", expr.token.ty)
+    }
+
+    fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
+        write!(self.fmt, "{}", expr.op.ty)?;
+        expr.right.accept(self)
+    }
+}
 
 pub struct AstPrinter<'a, 'f> {
-    pub fmt: &'a mut Formatter<'f>,
+    pub fmt: &'a mut fmt::Formatter<'f>,
 }
 
 impl Visitor for AstPrinter<'_, '_> {
@@ -93,12 +138,6 @@ impl Visitor for AstPrinter<'_, '_> {
     }
 }
 
-impl Display for Expr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.accept(&mut AstPrinter { fmt: f })
-    }
-}
-
 impl From<ExprBinary> for Expr {
     fn from(value: ExprBinary) -> Self {
         Self::Binary(value)
@@ -125,12 +164,8 @@ impl From<ExprLiteral> for Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        tok,
-        tokens::{Token, TokenType},
-    };
-
     use super::*;
+    use crate::tok;
 
     #[test]
     fn test_printer() {
@@ -162,6 +197,6 @@ mod tests {
         }
         .into();
 
-        assert_eq!("(* (- 123) (group 45.67))", format!("{}", expr));
+        assert_eq!("(* (- 123) (group 45.67))", expr.polish_notation());
     }
 }

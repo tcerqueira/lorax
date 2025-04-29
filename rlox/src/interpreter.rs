@@ -8,15 +8,23 @@ use crate::{
     tokens::TokenType,
 };
 
-pub struct Interpreter;
+pub struct Interpreter<'s> {
+    src: &'s str,
+}
 
-impl Visitor for Interpreter {
+impl<'s> Interpreter<'s> {
+    pub fn new(src: &'s str) -> Self {
+        Self { src }
+    }
+}
+
+impl Visitor for Interpreter<'_> {
     type T = Result<Object, RuntimeError>;
 
     fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
         let left = self.evaluate(&expr.left)?;
         let right = self.evaluate(&expr.right)?;
-        let err_handler = |e| RuntimeError::custom(&expr.op, e);
+        let err_handler = |e| RuntimeError::custom(self.src, &expr.clone().into(), e);
 
         let value = match expr.op.ty {
             TokenType::Plus => (left + right).map_err(err_handler)?,
@@ -39,19 +47,18 @@ impl Visitor for Interpreter {
 
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
         let right = self.evaluate(&expr.right)?;
-        let value =
-            match expr.op.ty {
-                TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
-                    RuntimeError::custom(&expr.op, format!("Invalid operand: {e}"))
-                })?),
-                TokenType::Bang => Object::new(!right.is_truthy()),
-                _ => panic!("Unexpected unary operator: {:?}", expr.op),
-            };
+        let value = match expr.op.ty {
+            TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
+                RuntimeError::custom(self.src, &expr.right, format!("Invalid operand: {e}"))
+            })?),
+            TokenType::Bang => Object::new(!right.is_truthy()),
+            _ => panic!("Unexpected unary operator: {:?}", expr.op),
+        };
         Ok(value)
     }
 }
 
-impl Interpreter {
+impl Interpreter<'_> {
     pub fn interpret(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
         self.evaluate(expr)
     }
@@ -73,55 +80,64 @@ mod tests {
             .scan_tokens()
             .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
             .expect("token error");
-        Parser::parse(tokens)
+        Parser::parse(source, tokens)
             .inspect_err(|e| eprintln!("{e}"))
             .expect("syntax error")
     }
 
     #[test]
     fn interpret_unary_bang() -> anyhow::Result<()> {
-        let ast = expr("!9");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "!9";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert!(!*value.downcast::<bool>());
 
-        let ast = expr("!\"hello\"");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "!\"hello\"";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert!(!*value.downcast::<bool>());
 
-        let ast = expr("!-0");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "!-0";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert!(!*value.downcast::<bool>());
 
-        let ast = expr("!false");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "!false";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert!(*value.downcast::<bool>());
 
-        let ast = expr("!(1 - 1)");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "!(1 - 1)";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert!(!*value.downcast::<bool>());
         Ok(())
     }
 
     #[test]
     fn interpret_unary_minus() -> anyhow::Result<()> {
-        let ast = expr("-1");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "-1";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), -1.);
 
-        let ast = expr("--1");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "--1";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), 1.);
 
-        let ast = expr("-(-1 - 2)");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "-(-1 - 2)";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), 3.);
         Ok(())
     }
 
     #[test]
     fn interpret_unary_minus_err() -> anyhow::Result<()> {
-        let ast = expr("-\"h\"");
-        Interpreter
+        let src = "-\"h\"";
+        let ast = expr(src);
+        Interpreter::new(src)
             .interpret(&ast)
             .expect_err("can't negate strings");
         Ok(())
@@ -129,24 +145,28 @@ mod tests {
 
     #[test]
     fn interpret_binary_plus() -> anyhow::Result<()> {
-        let ast = expr("1 + 2");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "1 + 2";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), 3.);
 
-        let ast = expr("\"Hello\" + \" \" + \"World!\"");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "\"Hello\" + \" \" + \"World!\"";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<String>(), "Hello World!");
 
-        let ast = expr("1 + -2");
-        let value = Interpreter.interpret(&ast)?;
+        let src = "1 + -2";
+        let ast = expr(src);
+        let value = Interpreter::new(src).interpret(&ast)?;
         assert_eq!(*value.downcast::<f64>(), -1.);
         Ok(())
     }
 
     #[test]
     fn interpret_binary_plus_err() -> anyhow::Result<()> {
-        let ast = expr("\"h\" + 1");
-        Interpreter
+        let src = "\"h\" + 1";
+        let ast = expr(src);
+        Interpreter::new(src)
             .interpret(&ast)
             .expect_err("can't add strings and numbers");
         Ok(())

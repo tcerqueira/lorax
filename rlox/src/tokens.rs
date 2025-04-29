@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::span::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single charecter tokens
@@ -51,8 +53,7 @@ pub enum TokenType {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub ty: TokenType,
-    pub span: Box<str>,
-    pub line: u32,
+    pub span: Span,
 }
 
 impl Display for TokenType {
@@ -104,255 +105,219 @@ impl Display for TokenType {
 #[macro_export]
 macro_rules! tok {
     (EOF, $line:expr) => {
-        Token {
-            ty: TokenType::Eof,
-            span: "".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Eof,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['(', $line:expr] => {
-        Token {
-            ty: TokenType::LeftParen,
-            span: "(".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::LeftParen,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [')', $line:expr] => {
-        Token {
-            ty: TokenType::RightParen,
-            span: ")".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::RightParen,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['{', $line:expr] => {
-        Token {
-            ty: TokenType::LeftBrace,
-            span: "{".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::LeftBrace,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['}', $line:expr] => {
-        Token {
-            ty: TokenType::RightBrace,
-            span: "}".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::RightBrace,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [,, $line:expr] => {
-        Token {
-            ty: TokenType::Comma,
-            span: ",".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Comma,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [., $line:expr] => {
-        Token {
-            ty: TokenType::Dot,
-            span: ".".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Dot,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [-, $line:expr] => {
-        Token {
-            ty: TokenType::Minus,
-            span: "-".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Minus,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [+, $line:expr] => {
-        Token {
-            ty: TokenType::Plus,
-            span: "+".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Plus,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [;, $line:expr] => {
-        Token {
-            ty: TokenType::Semicolon,
-            span: ";".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Semicolon,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [*, $line:expr] => {
-        Token {
-            ty: TokenType::Star,
-            span: "*".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Star,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [!, $line:expr] => {
-        Token {
-            ty: TokenType::Bang,
-            span: "!".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Bang,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [!=, $line:expr] => {
-        Token {
-            ty: TokenType::BangEqual,
-            span: "!=".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::BangEqual,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [=, $line:expr] => {
-        Token {
-            ty: TokenType::Equal,
-            span: "=".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Equal,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [==, $line:expr] => {
-        Token {
-            ty: TokenType::EqualEqual,
-            span: "==".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::EqualEqual,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [<, $line:expr] => {
-        Token {
-            ty: TokenType::Less,
-            span: "<".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Less,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [<=, $line:expr] => {
-        Token {
-            ty: TokenType::LessEqual,
-            span: "<=".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::LessEqual,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [>, $line:expr] => {
-        Token {
-            ty: TokenType::Greater,
-            span: ">".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Greater,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [>=, $line:expr] => {
-        Token {
-            ty: TokenType::GreaterEqual,
-            span: ">=".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::GreaterEqual,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [/, $line:expr] => {
-        Token {
-            ty: TokenType::Slash,
-            span: "/".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Slash,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [and, $line:expr] => {
-        Token {
-            ty: TokenType::And,
-            span: "and".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::And,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [class, $line:expr] => {
-        Token {
-            ty: TokenType::Class,
-            span: "class".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Class,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [else, $line:expr] => {
-        Token {
-            ty: TokenType::Else,
-            span: "else".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Else,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [false, $line:expr] => {
-        Token {
-            ty: TokenType::False,
-            span: "false".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::False,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [for, $line:expr] => {
-        Token {
-            ty: TokenType::For,
-            span: "for".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::For,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [fun, $line:expr] => {
-        Token {
-            ty: TokenType::Fun,
-            span: "fun".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Fun,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [if, $line:expr] => {
-        Token {
-            ty: TokenType::If,
-            span: "if".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::If,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [nil, $line:expr] => {
-        Token {
-            ty: TokenType::Nil,
-            span: "nil".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Nil,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [or, $line:expr] => {
-        Token {
-            ty: TokenType::Or,
-            span: "or".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Or,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [print, $line:expr] => {
-        Token {
-            ty: TokenType::Print,
-            span: "print".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Print,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [return, $line:expr] => {
-        Token {
-            ty: TokenType::Return,
-            span: "return".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Return,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [super, $line:expr] => {
-        Token {
-            ty: TokenType::Super,
-            span: "super".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Super,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [this, $line:expr] => {
-        Token {
-            ty: TokenType::This,
-            span: "this".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::This,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [true, $line:expr] => {
-        Token {
-            ty: TokenType::True,
-            span: "true".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::True,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [var, $line:expr] => {
-        Token {
-            ty: TokenType::Var,
-            span: "var".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Var,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [while, $line:expr] => {
-        Token {
-            ty: TokenType::While,
-            span: "while".into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::While,
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
 
@@ -361,24 +326,21 @@ macro_rules! tok {
     };
 
     [s: $lit:expr, $line:expr] => {
-        Token {
-            ty: TokenType::String($lit.into()),
-            span: format!("\"{}\"", $lit).into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::String($lit.into()),
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [n: $lit:expr, $line:expr] => {
-        Token {
-            ty: TokenType::Number($lit as f64),
-            span: stringify!($lit).into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Number($lit as f64),
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [id: $lit:expr, $line:expr] => {
-        Token {
-            ty: TokenType::Identifier($lit.into()),
-            span: $lit.into(),
-            line: $line,
+        $crate::tokens::Token {
+            ty: $crate::tokens::TokenType::Identifier($lit.into()),
+            span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
 

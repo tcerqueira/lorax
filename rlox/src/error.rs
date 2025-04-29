@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use thiserror::Error;
 
-use crate::tokens::Token;
+use crate::{parser::expr::Expr, tokens::Token};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -37,47 +37,47 @@ impl From<Vec<CompileError>> for Error {
 }
 
 #[derive(Debug, Error)]
-#[error("[line {line}] Error \"{span}\": {message}")]
+#[error("[line {line}] Error <{span}>: {message}")]
 pub struct CompileError {
     pub line: u32,
-    pub span: String,
-    pub message: String,
+    pub span: Box<str>,
+    pub message: Box<str>,
 }
 
 impl CompileError {
     #[expect(dead_code)]
-    pub fn custom(token: &Token, message: String) -> Self {
+    pub fn custom(src: &str, token: &Token, message: impl Display) -> Self {
         Self {
-            line: token.line,
-            span: token.span.as_ref().into(),
-            message,
+            line: token.span.line_start,
+            span: src[token.span.start..token.span.end].into(),
+            message: format!("{message}").into(),
         }
     }
 
-    pub fn expected(expected: impl Display, found: &Token) -> Self {
+    pub fn expected(src: &str, expected: impl Display, found: &Token) -> Self {
         Self {
-            line: found.line,
-            span: found.span.as_ref().into(),
-            message: format!("Expected '{}', found '{}'", expected, found.ty),
+            line: found.span.line_start,
+            span: src[found.span.start..found.span.end].into(),
+            message: format!("Expected '{}', found '{}'", expected, found.ty).into(),
         }
     }
 }
 
 #[derive(Debug, Error)]
-#[error("[line {line}] Error \"{span}\": {message}")]
+#[error("[line {line}] Error <{span}>: {message}")]
 pub struct RuntimeError {
     pub line: u32,
-    pub span: String,
-    pub message: String,
+    pub span: Box<str>,
+    pub message: Box<str>,
 }
 
-// TODO: use expr instead of token for better context reporting
 impl RuntimeError {
-    pub fn custom(token: &Token, message: impl Display) -> Self {
+    pub fn custom(src: &str, expr: &Expr, message: impl Display) -> Self {
+        let span = expr.span();
         Self {
-            line: token.line,
-            span: token.span.as_ref().into(),
-            message: format!("{message}"),
+            line: span.line_start,
+            span: src[span.start..span.end].into(),
+            message: format!("{message}").into(),
         }
     }
 }

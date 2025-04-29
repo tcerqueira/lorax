@@ -22,7 +22,8 @@ use object::Object;
 //              | "nil"
 //              | "(" expression ")";
 
-pub struct Parser {
+pub struct Parser<'s> {
+    src: &'s str,
     tokens: VecDeque<Token>,
     eof: Token,
 }
@@ -44,10 +45,11 @@ macro_rules! tt_pat {
     };
 }
 
-impl Parser {
-    pub fn parse(mut tokens: Vec<Token>) -> Result<Expr, CompileError> {
+impl<'s> Parser<'s> {
+    pub fn parse(source: &'s str, mut tokens: Vec<Token>) -> Result<Expr, CompileError> {
         let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
         let mut parser = Self {
+            src: source,
             tokens: tokens.into(),
             eof,
         };
@@ -137,7 +139,7 @@ impl Parser {
             Some(
                 tt_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
             ) => {
-                let literal: Object = match token.ty {
+                let literal = match token.ty {
                     TokenType::Number(n) => Object::new(n),
                     TokenType::String(ref s) => Object::new(String::from(s.as_ref())),
                     TokenType::True => Object::new(true),
@@ -153,8 +155,8 @@ impl Parser {
                 self.consume(TokenType::RightParen)?;
                 expr
             }
-            Some(tok) => return Err(CompileError::expected("expression", &tok)),
-            None => return Err(CompileError::expected("expression", &self.eof)),
+            Some(tok) => return Err(CompileError::expected(self.src, "expression", &tok)),
+            None => return Err(CompileError::expected(self.src, "expression", &self.eof)),
         };
         Ok(expr)
     }
@@ -198,8 +200,8 @@ impl Parser {
     fn consume(&mut self, pattern: TokenType) -> Result<Token, CompileError> {
         match self.advance() {
             Some(tok) if pattern == tok.ty => Ok(tok),
-            Some(tok) => Err(CompileError::expected(pattern, &tok)),
-            None => Err(CompileError::expected(pattern, &self.eof)),
+            Some(tok) => Err(CompileError::expected(self.src, pattern, &tok)),
+            None => Err(CompileError::expected(self.src, pattern, &self.eof)),
         }
     }
 
@@ -215,114 +217,76 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tok;
+    use crate::scanner::Scanner;
 
     #[test]
     fn parse_grouping() {
-        let tokens = vec![tok!['('], tok![n:42], tok![')'], tok![EOF]];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "(42)";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
+        let expr = Parser::parse(src, tokens).unwrap();
 
-        assert_eq!(expr.to_string(), "(group 42)")
+        assert_eq!(expr.polish_notation(), "(group 42)")
     }
 
     #[test]
     fn parse_equality() {
-        let tokens = vec![
-            tok![n:42],
-            tok![==],
-            tok![n:42],
-            tok![!=],
-            tok![n:69],
-            tok![!=],
-            tok![n:420],
-            tok![EOF],
-        ];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "42 == 42 != 69 != 420";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        assert_eq!(expr.to_string(), "(!= (!= (== 42 42) 69) 420)")
+        let expr = Parser::parse(src, tokens).unwrap();
+
+        assert_eq!(expr.polish_notation(), "(!= (!= (== 42 42) 69) 420)")
     }
 
     #[test]
     fn parse_comparison() {
-        let tokens = vec![
-            tok![n:42],
-            tok![<],
-            tok![n:69],
-            tok![<=],
-            tok![n:69],
-            tok![>],
-            tok![n:13],
-            tok![>=],
-            tok![n:420],
-            tok![EOF],
-        ];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "42 < 69 <= 69 > 13 >= 420";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        assert_eq!(expr.to_string(), "(>= (> (<= (< 42 69) 69) 13) 420)");
+        let expr = Parser::parse(src, tokens).unwrap();
+
+        assert_eq!(expr.polish_notation(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
 
     #[test]
     fn parse_term() {
-        let tokens = vec![
-            tok![n:42],
-            tok![-],
-            tok![n:69],
-            tok![+],
-            tok![n:420],
-            tok![EOF],
-        ];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "42 - 69 + 420";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        assert_eq!(expr.to_string(), "(+ (- 42 69) 420)");
+        let expr = Parser::parse(src, tokens).unwrap();
+
+        assert_eq!(expr.polish_notation(), "(+ (- 42 69) 420)");
     }
 
     #[test]
     fn parse_factor() {
-        let tokens = vec![
-            tok![n:42],
-            tok![/],
-            tok![n:69],
-            tok![*],
-            tok![n:420],
-            tok![EOF],
-        ];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "42 / 69 * 420";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        assert_eq!(expr.to_string(), "(* (/ 42 69) 420)");
+        let expr = Parser::parse(src, tokens).unwrap();
+
+        assert_eq!(expr.polish_notation(), "(* (/ 42 69) 420)");
     }
 
     #[test]
     fn parse_unary() {
-        let tokens = vec![tok![!], tok![-], tok![n:42], tok![EOF]];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "!-42";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        assert_eq!(expr.to_string(), "(! (- 42))");
+        let expr = Parser::parse(src, tokens).unwrap();
+
+        assert_eq!(expr.polish_notation(), "(! (- 42))");
     }
 
     #[test]
     fn test_precedence() {
-        let tokens = vec![
-            tok![n:42],
-            tok![+],
-            tok![-],
-            tok![n:69],
-            tok![*],
-            tok![n:420],
-            tok![==],
-            tok!['('],
-            tok![s:"wtv"],
-            tok![>],
-            tok![!],
-            tok![false],
-            tok![!=],
-            tok![nil],
-            tok![')'],
-            tok![EOF],
-        ];
-        let expr = Parser::parse(tokens).unwrap();
+        let src = "42 + -69 * 420 == (\"wtv\" > !false != nil)";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
+
+        let expr = Parser::parse(src, tokens).unwrap();
 
         assert_eq!(
-            expr.to_string(),
+            expr.polish_notation(),
             "(== (+ 42 (* (- 69) 420)) (group (!= (> \"wtv\" (! false)) nil)))"
         );
     }
