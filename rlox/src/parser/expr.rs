@@ -9,6 +9,7 @@ pub enum Expr {
     Grouping(ExprGrouping),
     Literal(ExprLiteral),
     Unary(ExprUnary),
+    Variable(ExprVariable),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +40,11 @@ pub struct ExprUnary {
     pub right: Box<Expr>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprVariable {
+    pub name: Token,
+}
+
 impl Expr {
     pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
         match self {
@@ -46,6 +52,7 @@ impl Expr {
             Expr::Grouping(expr_grouping) => visitor.visit_grouping(expr_grouping),
             Expr::Literal(expr_literal) => visitor.visit_literal(expr_literal),
             Expr::Unary(expr_unary) => visitor.visit_unary(expr_unary),
+            Expr::Variable(expr_variable) => visitor.visit_variable(expr_variable),
         }
     }
 
@@ -55,6 +62,7 @@ impl Expr {
             Expr::Grouping(e) => e.0.span(),
             Expr::Literal(e) => e.token.span.clone(),
             Expr::Unary(e) => e.op.span.join(&e.right.span()),
+            Expr::Variable(e) => e.name.span.clone(),
         }
     }
 
@@ -104,6 +112,10 @@ impl ExprVisitor for StdPrinter<'_, '_> {
         write!(self.fmt, "{}", expr.op.ty)?;
         expr.right.accept(self)
     }
+
+    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+        write!(self.fmt, "{}", expr.name.ty)
+    }
 }
 
 pub struct AstPrinter<'a, 'f> {
@@ -136,6 +148,10 @@ impl ExprVisitor for AstPrinter<'_, '_> {
         expr.right.accept(self)?;
         write!(self.fmt, ")")
     }
+
+    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+        write!(self.fmt, "{}", expr.name.ty)
+    }
 }
 
 impl From<ExprBinary> for Expr {
@@ -159,6 +175,12 @@ impl From<ExprGrouping> for Expr {
 impl From<ExprLiteral> for Expr {
     fn from(value: ExprLiteral) -> Self {
         Self::Literal(value)
+    }
+}
+
+impl From<ExprVariable> for Expr {
+    fn from(value: ExprVariable) -> Self {
+        Self::Variable(value)
     }
 }
 

@@ -10,26 +10,27 @@ use expr::*;
 use object::Object;
 use stmt::*;
 
-// program          => statement* EOF;
+// program          => declaration* EOF ;
 //
-// statement        => exprStmt | printStmt;
-// exprStmt         => expression ";";
-// printStmt        => "print" expression ";";
+// declaration      => varDecl | statement ;
+// statement        => exprStmt | printStmt ;
+//
+// varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
+// exprStmt         => expression ";" ;
+// printStmt        => "print" expression ";" ;
 //
 // expression       => equality;
-// equality         => comparison ( ("!=" | "==") comparison )*;
-// comparison       => term ( (">" | ">=" | "<" | "<=") term )*;
-// term             => factor ( ("-" | "+") factor )*;
-// factor           => unary ( ("/" | "*") unary )*;
+// equality         => comparison ( ("!=" | "==") comparison )* ;
+// comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
+// term             => factor ( ("-" | "+") factor )* ;
+// factor           => unary ( ("/" | "*") unary )* ;
 // unary            => ("!" | "-") unary
-//                  | primary;
+//                  | primary ;
 //
-// primary          => NUMBER
-//                  | STRING
-//                  | "true"
-//                  | "false"
-//                  | "nil"
-//                  | "(" expression ")";
+// primary          => NUMBER | STRING
+//                  | "true" | "false" | "nil"
+//                  | "(" expression ")"
+//                  | IDENTIFIER ;
 
 pub struct Parser<'s> {
     src: &'s str,
@@ -54,6 +55,17 @@ macro_rules! tt_pat {
     };
 }
 
+/// Consume but for more complex patterns that require pattern matching
+macro_rules! consume {
+    ($this:expr, $pat:pat, $expected:expr) => {
+        match $this.advance() {
+            Some(tt_pat!(tok @ $pat)) => Ok(tok),
+            Some(tok) => Err(CompileError::expected($this.src, $expected, &tok)),
+            None => Err(CompileError::expected($this.src, $expected, &$this.eof)),
+        }
+    };
+}
+
 impl<'s> Parser<'s> {
     pub fn new(source: &'s str, mut tokens: Vec<Token>) -> Self {
         let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
@@ -64,13 +76,41 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt>, CompileError> {
+    pub fn parse(mut self) -> Result<Vec<Stmt>, Vec<CompileError>> {
         let mut stmts = vec![];
+        let mut errs = vec![];
         while self.peek().is_some() {
-            let stmt = self.statement()?;
-            stmts.push(stmt);
+            match self.declaration() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(err) => {
+                    self.synchronize();
+                    errs.push(err);
+                }
+            };
         }
-        Ok(stmts)
+        if !errs.is_empty() {
+            Err(errs)
+        } else {
+            Ok(stmts)
+        }
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, CompileError> {
+        match self.peek() {
+            Some(tt_pat!(TokenType::Var)) => self.var_decl(),
+            _ => self.statement(),
+        }
+    }
+
+    fn var_decl(&mut self) -> Result<Stmt, CompileError> {
+        self.consume(TokenType::Var)?;
+        let ident = consume!(self, TokenType::Identifier(_), "identifier")?;
+        let initializer = self
+            .matches(&[TokenType::Equal])
+            .map(|_| self.expression())
+            .transpose()?;
+        self.consume(TokenType::Semicolon)?;
+        Ok(StmtVar { ident, initializer }.into())
     }
 
     fn statement(&mut self) -> Result<Stmt, CompileError> {
@@ -192,13 +232,13 @@ impl<'s> Parser<'s> {
                 self.consume(TokenType::RightParen)?;
                 expr
             }
+            Some(tt_pat!(ident @ TokenType::Identifier(_))) => ExprVariable { name: ident }.into(),
             Some(tok) => return Err(CompileError::expected(self.src, "expression", &tok)),
             None => return Err(CompileError::expected(self.src, "expression", &self.eof)),
         };
         Ok(expr)
     }
 
-    #[expect(dead_code)]
     fn synchronize(&mut self) {
         while let Some(tok) = self.advance() {
             match tok {

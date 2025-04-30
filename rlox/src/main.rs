@@ -61,7 +61,7 @@ fn run(source: String) -> crate::Result<()> {
 
     let program = Parser::new(&source, tokens)
         .parse()
-        .inspect_err(|e| eprintln!("{e}"))?;
+        .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
 
     Interpreter::new(&source)
         .interpret(program)

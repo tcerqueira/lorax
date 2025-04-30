@@ -1,3 +1,5 @@
+use environment::*;
+
 use crate::{
     error::RuntimeError,
     parser::{
@@ -9,13 +11,19 @@ use crate::{
     tokens::TokenType,
 };
 
+mod environment;
+
 pub struct Interpreter<'s> {
     src: &'s str,
+    env: Environment,
 }
 
 impl<'s> Interpreter<'s> {
     pub fn new(src: &'s str) -> Self {
-        Self { src }
+        Self {
+            src,
+            env: Environment::new(),
+        }
     }
 }
 
@@ -57,6 +65,13 @@ impl ExprVisitor for Interpreter<'_> {
         };
         Ok(value)
     }
+
+    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+        // TODO: unnecessary String allocation, should be able to get the name directly
+        self.env
+            .get(&expr.name.ty.to_string())
+            .ok_or(RuntimeError::undefined(self.src, &expr.name))
+    }
 }
 
 impl StmtVisitor for Interpreter<'_> {
@@ -70,6 +85,20 @@ impl StmtVisitor for Interpreter<'_> {
 
     fn visit_expression(&mut self, stmt: &StmtExpression) -> Self::T {
         self.evaluate(&stmt.expr)?;
+        Ok(())
+    }
+
+    fn visit_var(&mut self, stmt: &StmtVar) -> Self::T {
+        // TODO: unnecessary String allocation, should be able to get the name directly
+        let initializer = stmt
+            .initializer
+            .as_ref()
+            .map(|e| self.evaluate(e))
+            .transpose()?
+            .unwrap_or_else(Object::nil);
+
+        self.env
+            .define(stmt.ident.ty.to_string().into(), initializer);
         Ok(())
     }
 }
