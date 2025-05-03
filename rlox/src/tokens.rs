@@ -50,6 +50,15 @@ pub enum TokenType {
     Eof,
 }
 
+impl TokenType {
+    pub fn ident(&self) -> &str {
+        let TokenType::Identifier(ident) = self else {
+            panic!("token is not an Identifier")
+        };
+        ident
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub ty: TokenType,

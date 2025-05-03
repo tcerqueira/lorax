@@ -17,14 +17,14 @@ impl<T> Nil for Option<T> {
     }
 }
 
-pub trait ObjectExt: Any + Debug + Display {}
-impl<T: Any + Debug + Display> ObjectExt for T {}
+pub trait ObjectInner: Any + Debug + Display {}
+impl<T: Any + Debug + Display> ObjectInner for T {}
 
 #[derive(Debug, Clone)]
-pub struct Object(Option<Rc<dyn ObjectExt>>);
+pub struct Object(Option<Rc<dyn ObjectInner>>);
 
 impl Object {
-    pub fn new(value: impl ObjectExt) -> Self {
+    pub fn new(value: impl ObjectInner) -> Self {
         Self(Some(Rc::new(value)))
     }
 
@@ -176,7 +176,7 @@ impl Nil for Object {
 }
 
 impl Deref for Object {
-    type Target = Option<Rc<dyn ObjectExt>>;
+    type Target = Option<Rc<dyn ObjectInner>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

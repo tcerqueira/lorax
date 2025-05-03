@@ -19,7 +19,8 @@ use stmt::*;
 // exprStmt         => expression ";" ;
 // printStmt        => "print" expression ";" ;
 //
-// expression       => equality;
+// expression       => assignment ;
+// assignment       => IDENTIFIER "=" assignment | equality ;
 // equality         => comparison ( ("!=" | "==") comparison )* ;
 // comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
 // term             => factor ( ("-" | "+") factor )* ;
@@ -134,7 +135,24 @@ impl<'s> Parser<'s> {
     }
 
     pub(crate) fn expression(&mut self) -> Result<Expr, CompileError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, CompileError> {
+        let expr = self.equality()?;
+        if let Some(ref equals) = self.matches(&[TokenType::Equal]) {
+            let value = Box::new(self.assignment()?);
+
+            return match expr {
+                Expr::Variable(ExprVariable { name }) => Ok(ExprAssign { name, value }.into()),
+                _ => Err(CompileError::custom(
+                    self.src,
+                    equals,
+                    "Invalid assignment target.",
+                )),
+            };
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, CompileError> {

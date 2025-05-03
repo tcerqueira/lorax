@@ -11,7 +11,7 @@ use crate::{
     tokens::TokenType,
 };
 
-mod environment;
+pub mod environment;
 
 pub struct Interpreter<'s> {
     src: &'s str,
@@ -67,10 +67,16 @@ impl ExprVisitor for Interpreter<'_> {
     }
 
     fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
-        // TODO: unnecessary String allocation, should be able to get the name directly
         self.env
-            .get(&expr.name.ty.to_string())
+            .get(expr.name.ty.ident())
             .ok_or(RuntimeError::undefined(self.src, &expr.name))
+    }
+
+    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+        let value = self.evaluate(&expr.value)?;
+        self.env
+            .assign(expr.name.ty.ident(), value)
+            .map_err(|e| RuntimeError::custom(self.src, &expr.value, e))
     }
 }
 
@@ -89,7 +95,6 @@ impl StmtVisitor for Interpreter<'_> {
     }
 
     fn visit_var(&mut self, stmt: &StmtVar) -> Self::T {
-        // TODO: unnecessary String allocation, should be able to get the name directly
         let initializer = stmt
             .initializer
             .as_ref()
@@ -97,8 +102,7 @@ impl StmtVisitor for Interpreter<'_> {
             .transpose()?
             .unwrap_or_else(Object::nil);
 
-        self.env
-            .define(stmt.ident.ty.to_string().into(), initializer);
+        self.env.define(stmt.ident.ty.ident().into(), initializer);
         Ok(())
     }
 }

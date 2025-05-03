@@ -10,6 +10,7 @@ pub enum Expr {
     Literal(ExprLiteral),
     Unary(ExprUnary),
     Variable(ExprVariable),
+    Assign(ExprAssign),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,14 +46,21 @@ pub struct ExprVariable {
     pub name: Token,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprAssign {
+    pub name: Token,
+    pub value: Box<Expr>,
+}
+
 impl Expr {
     pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
         match self {
-            Expr::Binary(expr_binary) => visitor.visit_binary(expr_binary),
-            Expr::Grouping(expr_grouping) => visitor.visit_grouping(expr_grouping),
-            Expr::Literal(expr_literal) => visitor.visit_literal(expr_literal),
-            Expr::Unary(expr_unary) => visitor.visit_unary(expr_unary),
-            Expr::Variable(expr_variable) => visitor.visit_variable(expr_variable),
+            Expr::Binary(e) => visitor.visit_binary(e),
+            Expr::Grouping(e) => visitor.visit_grouping(e),
+            Expr::Literal(e) => visitor.visit_literal(e),
+            Expr::Unary(e) => visitor.visit_unary(e),
+            Expr::Variable(e) => visitor.visit_variable(e),
+            Expr::Assign(e) => visitor.visit_assign(e),
         }
     }
 
@@ -63,6 +71,7 @@ impl Expr {
             Expr::Literal(e) => e.token.span.clone(),
             Expr::Unary(e) => e.op.span.join(&e.right.span()),
             Expr::Variable(e) => e.name.span.clone(),
+            Expr::Assign(e) => e.name.span.join(&e.value.span()),
         }
     }
 
@@ -116,6 +125,11 @@ impl ExprVisitor for StdPrinter<'_, '_> {
     fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
+
+    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+        write!(self.fmt, "{} = ", expr.name.ty)?;
+        expr.value.accept(self)
+    }
 }
 
 pub struct AstPrinter<'a, 'f> {
@@ -152,6 +166,12 @@ impl ExprVisitor for AstPrinter<'_, '_> {
     fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
+
+    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+        write!(self.fmt, "(= {}", expr.name.ty)?;
+        expr.value.accept(self)?;
+        write!(self.fmt, ")")
+    }
 }
 
 impl From<ExprBinary> for Expr {
@@ -181,6 +201,12 @@ impl From<ExprLiteral> for Expr {
 impl From<ExprVariable> for Expr {
     fn from(value: ExprVariable) -> Self {
         Self::Variable(value)
+    }
+}
+
+impl From<ExprAssign> for Expr {
+    fn from(value: ExprAssign) -> Self {
+        Self::Assign(value)
     }
 }
 

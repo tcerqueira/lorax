@@ -1,0 +1,5 @@
+var a = 5;
+print a;
+a = "wth";
+print a;
+print a = false;

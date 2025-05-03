@@ -45,7 +45,6 @@ pub struct CompileError {
 }
 
 impl CompileError {
-    #[expect(dead_code)]
     pub fn custom(src: &str, token: &Token, message: impl Display) -> Self {
         Self {
             line: token.span.line_start,

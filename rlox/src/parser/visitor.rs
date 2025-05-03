@@ -9,6 +9,7 @@ pub trait ExprVisitor {
     fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T;
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T;
     fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T;
+    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T;
 }
 
 pub trait StmtVisitor {
