@@ -9,15 +9,14 @@ use anyhow::Context;
 
 use error::*;
 use interpreter::*;
+use lexer::*;
 use parser::*;
-use scanner::*;
 
 mod error;
 mod interpreter;
+mod lexer;
 mod parser;
-mod scanner;
 mod span;
-mod tokens;
 
 type Result<T> = ::std::result::Result<T, Error>;
 
@@ -74,7 +73,7 @@ impl Termination for Error {
     fn report(self) -> ExitCode {
         match self {
             Error::Cli => ExitCode::from(64),
-            Error::Compile { .. } => ExitCode::from(65),
+            Error::Parsing { .. } | Error::Lexing(_) => ExitCode::from(65),
             Error::Runtime(_) => ExitCode::from(70),
             Error::Other(_) => ExitCode::FAILURE,
         }

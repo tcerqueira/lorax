@@ -1,3 +1,4 @@
+pub mod error;
 pub mod expr;
 pub mod object;
 pub mod stmt;
@@ -5,7 +6,8 @@ pub mod visitor;
 
 use std::collections::VecDeque;
 
-use crate::{error::CompileError, tokens::*};
+use crate::tokens::*;
+use error::ParsingError;
 use expr::*;
 use object::Object;
 use stmt::*;
@@ -61,8 +63,8 @@ macro_rules! consume {
     ($this:expr, $pat:pat, $expected:expr) => {
         match $this.advance() {
             Some(tt_pat!(tok @ $pat)) => Ok(tok),
-            Some(tok) => Err(CompileError::expected($this.src, $expected, &tok)),
-            None => Err(CompileError::expected($this.src, $expected, &$this.eof)),
+            Some(tok) => Err(ParsingError::expected($this.src, $expected, &tok)),
+            None => Err(ParsingError::expected($this.src, $expected, &$this.eof)),
         }
     };
 }
@@ -77,7 +79,7 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn parse(mut self) -> Result<Vec<Stmt>, Vec<CompileError>> {
+    pub fn parse(mut self) -> Result<Vec<Stmt>, Vec<ParsingError>> {
         let mut stmts = vec![];
         let mut errs = vec![];
         while self.peek().is_some() {
@@ -96,14 +98,14 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Stmt, CompileError> {
+    fn declaration(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek() {
             Some(tt_pat!(TokenType::Var)) => self.var_decl(),
             _ => self.statement(),
         }
     }
 
-    fn var_decl(&mut self) -> Result<Stmt, CompileError> {
+    fn var_decl(&mut self) -> Result<Stmt, ParsingError> {
         self.consume(TokenType::Var)?;
         let ident = consume!(self, TokenType::Identifier(_), "identifier")?;
         let initializer = self
@@ -114,38 +116,38 @@ impl<'s> Parser<'s> {
         Ok(StmtVar { ident, initializer }.into())
     }
 
-    fn statement(&mut self) -> Result<Stmt, CompileError> {
+    fn statement(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek() {
             Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
             _ => self.expression_stmt(),
         }
     }
 
-    fn expression_stmt(&mut self) -> Result<Stmt, CompileError> {
+    fn expression_stmt(&mut self) -> Result<Stmt, ParsingError> {
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
         Ok(StmtExpression { expr }.into())
     }
 
-    fn print_stmt(&mut self) -> Result<Stmt, CompileError> {
+    fn print_stmt(&mut self) -> Result<Stmt, ParsingError> {
         let print_token = self.consume(TokenType::Print)?;
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
         Ok(StmtPrint { print_token, expr }.into())
     }
 
-    pub(crate) fn expression(&mut self) -> Result<Expr, CompileError> {
+    pub(crate) fn expression(&mut self) -> Result<Expr, ParsingError> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<Expr, CompileError> {
+    fn assignment(&mut self) -> Result<Expr, ParsingError> {
         let expr = self.equality()?;
         if let Some(ref equals) = self.matches(&[TokenType::Equal]) {
             let value = Box::new(self.assignment()?);
 
             return match expr {
                 Expr::Variable(ExprVariable { name }) => Ok(ExprAssign { name, value }.into()),
-                _ => Err(CompileError::custom(
+                _ => Err(ParsingError::custom(
                     self.src,
                     equals,
                     "Invalid assignment target.",
@@ -155,7 +157,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<Expr, CompileError> {
+    fn equality(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.comparison()?;
         while let Some(op) = self.matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
             let right = self.comparison()?;
@@ -169,7 +171,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<Expr, CompileError> {
+    fn comparison(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.term()?;
 
         while let Some(op) = self.matches(&[
@@ -189,7 +191,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn term(&mut self) -> Result<Expr, CompileError> {
+    fn term(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.factor()?;
         while let Some(op) = self.matches(&[TokenType::Minus, TokenType::Plus]) {
             let right = self.factor()?;
@@ -203,7 +205,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn factor(&mut self) -> Result<Expr, CompileError> {
+    fn factor(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.unary()?;
         while let Some(op) = self.matches(&[TokenType::Slash, TokenType::Star]) {
             let right = self.unary()?;
@@ -217,7 +219,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<Expr, CompileError> {
+    fn unary(&mut self) -> Result<Expr, ParsingError> {
         let expr = match self.matches(&[TokenType::Bang, TokenType::Minus]) {
             Some(op) => ExprUnary {
                 op,
@@ -229,7 +231,7 @@ impl<'s> Parser<'s> {
         Ok(expr)
     }
 
-    fn primary(&mut self) -> Result<Expr, CompileError> {
+    fn primary(&mut self) -> Result<Expr, ParsingError> {
         let expr = match self.advance() {
             Some(
                 tt_pat!(token @ TokenType::Number(_) | TokenType::String(_) | TokenType::True | TokenType::False | TokenType::Nil),
@@ -251,8 +253,8 @@ impl<'s> Parser<'s> {
                 expr
             }
             Some(tt_pat!(ident @ TokenType::Identifier(_))) => ExprVariable { name: ident }.into(),
-            Some(tok) => return Err(CompileError::expected(self.src, "expression", &tok)),
-            None => return Err(CompileError::expected(self.src, "expression", &self.eof)),
+            Some(tok) => return Err(ParsingError::expected(self.src, "expression", &tok)),
+            None => return Err(ParsingError::expected(self.src, "expression", &self.eof)),
         };
         Ok(expr)
     }
@@ -292,11 +294,11 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn consume(&mut self, pattern: TokenType) -> Result<Token, CompileError> {
+    fn consume(&mut self, pattern: TokenType) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern == tok.ty => Ok(tok),
-            Some(tok) => Err(CompileError::expected(self.src, pattern, &tok)),
-            None => Err(CompileError::expected(self.src, pattern, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(self.src, pattern, &tok)),
+            None => Err(ParsingError::expected(self.src, pattern, &self.eof)),
         }
     }
 
@@ -312,7 +314,7 @@ impl<'s> Parser<'s> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scanner::Scanner;
+    use crate::lexer::Scanner;
 
     #[test]
     fn parse_grouping() {

@@ -1,7 +1,7 @@
 use environment::*;
 
 use crate::{
-    error::RuntimeError,
+    interpreter::error::RuntimeError,
     parser::{
         expr::*,
         object::Object,
@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub mod environment;
+pub mod error;
 
 pub struct Interpreter<'s> {
     src: &'s str,
@@ -126,7 +127,7 @@ impl Interpreter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{parser::Parser, scanner::Scanner};
+    use crate::{lexer::Scanner, parser::Parser};
 
     use super::*;
 
