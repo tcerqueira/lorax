@@ -1,27 +1,26 @@
-use std::fmt::Display;
-
 use thiserror::Error;
 
-use crate::report::Span;
+use crate::report::{Report, Span};
 
 #[derive(Debug, Error)]
-#[error("[line {line}] Error <{span}>: {message}")]
+#[error("[line {}:{}] {}", .span.line_start, .span.start, .message)]
 pub struct LexingError {
-    pub line: u32,
-    pub span: Box<str>,
+    pub span: Span,
     pub message: Box<str>,
 }
 
 impl LexingError {
-    pub fn custom(src: &str, span: &Span, message: impl Display) -> Self {
-        Self {
-            line: span.line_start,
-            span: make_span(src, span),
-            message: format!("{message}").into(),
-        }
+    pub fn new(span: Span, message: Box<str>) -> Self {
+        Self { span, message }
     }
 }
 
-fn make_span(src: &str, span: &Span) -> Box<str> {
-    src[span.start..span.end].into()
+impl Report for LexingError {
+    fn report(&self, _source: &str) {
+        eprint!("{}", self.message);
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
+    }
 }

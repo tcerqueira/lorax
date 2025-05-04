@@ -26,8 +26,7 @@ use crate::{runtime::object::Object, tokens::*};
 //                  | "(" expression ")"
 //                  | IDENTIFIER ;
 
-pub struct Parser<'s> {
-    src: &'s str,
+pub struct Parser {
     tokens: VecDeque<Token>,
     eof: Token,
 }
@@ -54,17 +53,16 @@ macro_rules! consume {
     ($this:expr, $pat:pat, $expected:expr) => {
         match $this.advance() {
             Some(tt_pat!(tok @ $pat)) => Ok(tok),
-            Some(tok) => Err(ParsingError::expected($this.src, $expected, &tok)),
-            None => Err(ParsingError::expected($this.src, $expected, &$this.eof)),
+            Some(tok) => Err(ParsingError::expected($expected, &tok)),
+            None => Err(ParsingError::expected($expected, &$this.eof)),
         }
     };
 }
 
-impl<'s> Parser<'s> {
-    pub fn new(source: &'s str, mut tokens: Vec<Token>) -> Self {
+impl Parser {
+    pub fn new(mut tokens: Vec<Token>) -> Self {
         let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
         Self {
-            src: source,
             tokens: tokens.into(),
             eof,
         }
@@ -138,11 +136,7 @@ impl<'s> Parser<'s> {
 
             return match expr {
                 Expr::Variable(ExprVariable { name }) => Ok(ExprAssign { name, value }.into()),
-                _ => Err(ParsingError::custom(
-                    self.src,
-                    equals,
-                    "Invalid assignment target.",
-                )),
+                _ => Err(ParsingError::custom(equals, "Invalid assignment target.")),
             };
         }
         Ok(expr)
@@ -244,8 +238,8 @@ impl<'s> Parser<'s> {
                 expr
             }
             Some(tt_pat!(ident @ TokenType::Identifier(_))) => ExprVariable { name: ident }.into(),
-            Some(tok) => return Err(ParsingError::expected(self.src, "expression", &tok)),
-            None => return Err(ParsingError::expected(self.src, "expression", &self.eof)),
+            Some(tok) => return Err(ParsingError::expected("expression", &tok)),
+            None => return Err(ParsingError::expected("expression", &self.eof)),
         };
         Ok(expr)
     }
@@ -288,8 +282,8 @@ impl<'s> Parser<'s> {
     fn consume(&mut self, pattern: TokenType) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern == tok.ty => Ok(tok),
-            Some(tok) => Err(ParsingError::expected(self.src, pattern, &tok)),
-            None => Err(ParsingError::expected(self.src, pattern, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(pattern, &tok)),
+            None => Err(ParsingError::expected(pattern, &self.eof)),
         }
     }
 
@@ -311,7 +305,7 @@ mod tests {
     fn parse_grouping() {
         let src = "(42)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(group 42)")
     }
@@ -321,7 +315,7 @@ mod tests {
         let src = "42 == 42 != 69 != 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(!= (!= (== 42 42) 69) 420)")
     }
@@ -331,7 +325,7 @@ mod tests {
         let src = "42 < 69 <= 69 > 13 >= 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
@@ -341,7 +335,7 @@ mod tests {
         let src = "42 - 69 + 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(+ (- 42 69) 420)");
     }
@@ -351,7 +345,7 @@ mod tests {
         let src = "42 / 69 * 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(* (/ 42 69) 420)");
     }
@@ -361,7 +355,7 @@ mod tests {
         let src = "!-42";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(! (- 42))");
     }
@@ -371,7 +365,7 @@ mod tests {
         let src = "42 + -69 * 420 == (\"wtv\" > !false != nil)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(src, tokens).expression().unwrap();
+        let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(
             expr.polish_notation(),

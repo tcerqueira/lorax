@@ -3,8 +3,6 @@ use crate::report::*;
 
 pub struct Scanner<'s> {
     tokens: Vec<Token>,
-    // TODO: blec, use a top level Reporter
-    original_src: &'s str,
     source: &'s str,
     curr: usize,
     global_curr: usize,
@@ -15,7 +13,6 @@ impl<'s> Scanner<'s> {
     pub fn new(source: &'s str) -> Self {
         Self {
             tokens: vec![],
-            original_src: source,
             source,
             curr: 0,
             global_curr: 0,
@@ -82,10 +79,9 @@ impl<'s> Scanner<'s> {
             c if c.is_ascii_digit() => self.number()?,
             c if c.is_alphabetic() || c == '_' => self.identifier()?,
             _ => {
-                return Err(LexingError::custom(
-                    self.original_src,
-                    &self.make_span(),
-                    "Unexpected character.",
+                return Err(LexingError::new(
+                    self.make_span(),
+                    "Unexpected character.".into(),
                 ));
             }
         };
@@ -115,10 +111,9 @@ impl<'s> Scanner<'s> {
         }
 
         // Consume closing quote
-        self.advance_checked().ok_or(LexingError::custom(
-            self.original_src,
-            &self.make_span(),
-            "Unterminated string.",
+        self.advance_checked().ok_or(LexingError::new(
+            self.make_span(),
+            "Unterminated string.".into(),
         ))?;
 
         const QUOTE_WIDTH: usize = '"'.len_utf8();

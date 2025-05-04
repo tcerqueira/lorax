@@ -10,6 +10,7 @@ use anyhow::Context;
 use error::*;
 use lexing::*;
 use parsing::*;
+use report::*;
 use runtime::*;
 
 mod error;
@@ -54,17 +55,18 @@ fn run_prompt() -> crate::Result<()> {
 }
 
 fn run(source: String) -> crate::Result<()> {
+    let reporter = Reporter::new(&source);
     let tokens = Scanner::new(&source)
         .scan_tokens()
-        .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
+        .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    let program = Parser::new(&source, tokens)
+    let program = Parser::new(tokens)
         .parse()
-        .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))?;
+        .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    Interpreter::new(&source)
+    Interpreter::new()
         .interpret(program)
-        .inspect_err(|e| eprintln!("{e}"))?;
+        .inspect_err(|e| reporter.report(e))?;
 
     Ok(())
 }

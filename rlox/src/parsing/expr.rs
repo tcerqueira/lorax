@@ -64,6 +64,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn span(&self) -> Span {
         match self {
             Expr::Binary(e) => e.left.span().join(&e.right.span()),

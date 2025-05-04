@@ -18,6 +18,10 @@ impl Span {
             line_end: self.line_end.max(other.line_end),
         }
     }
+
+    pub fn slice<'s>(&self, s: &'s str) -> &'s str {
+        &s[self.start..self.end]
+    }
 }
 
 impl Default for Span {
