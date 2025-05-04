@@ -8,14 +8,14 @@ use std::{
 use anyhow::Context;
 
 use error::*;
-use interpreter::*;
-use lexer::*;
-use parser::*;
+use lexing::*;
+use parsing::*;
+use runtime::*;
 
 mod error;
-mod interpreter;
-mod lexer;
-mod parser;
+mod lexing;
+mod parsing;
+mod runtime;
 mod span;
 
 type Result<T> = ::std::result::Result<T, Error>;

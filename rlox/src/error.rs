@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    interpreter::error::RuntimeError, lexer::error::LexingError, parser::error::ParsingError,
+    lexing::error::LexingError, parsing::error::ParsingError, runtime::error::RuntimeError,
 };
 
 #[derive(Debug, Error)]

@@ -114,218 +114,218 @@ impl Display for TokenType {
 #[macro_export]
 macro_rules! tok {
     (EOF, $line:expr) => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Eof,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Eof,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['(', $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::LeftParen,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::LeftParen,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [')', $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::RightParen,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::RightParen,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['{', $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::LeftBrace,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::LeftBrace,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     ['}', $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::RightBrace,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::RightBrace,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [,, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Comma,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Comma,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [., $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Dot,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Dot,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [-, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Minus,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Minus,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [+, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Plus,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Plus,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [;, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Semicolon,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Semicolon,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [*, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Star,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Star,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [!, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Bang,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Bang,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [!=, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::BangEqual,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::BangEqual,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [=, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Equal,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Equal,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [==, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::EqualEqual,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::EqualEqual,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [<, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Less,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Less,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [<=, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::LessEqual,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::LessEqual,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [>, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Greater,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Greater,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [>=, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::GreaterEqual,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::GreaterEqual,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [/, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Slash,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Slash,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [and, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::And,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::And,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [class, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Class,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Class,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [else, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Else,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Else,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [false, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::False,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::False,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [for, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::For,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::For,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [fun, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Fun,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Fun,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [if, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::If,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::If,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [nil, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Nil,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Nil,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [or, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Or,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Or,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [print, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Print,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Print,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [return, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Return,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Return,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [super, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Super,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Super,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [this, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::This,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::This,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [true, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::True,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::True,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [var, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Var,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Var,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
     [while, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::While,
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::While,
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()} ,
         }
     };
@@ -335,20 +335,20 @@ macro_rules! tok {
     };
 
     [s: $lit:expr, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::String($lit.into()),
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::String($lit.into()),
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [n: $lit:expr, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Number($lit as f64),
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Number($lit as f64),
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };
     [id: $lit:expr, $line:expr] => {
-        $crate::lexer::tokens::Token {
-            ty: $crate::lexer::tokens::TokenType::Identifier($lit.into()),
+        $crate::lexing::tokens::Token {
+            ty: $crate::lexing::tokens::TokenType::Identifier($lit.into()),
             span: $crate::span::Span { line_start: $line, line_end: $line, ..Default::default()},
         }
     };

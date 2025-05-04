@@ -1,19 +1,14 @@
-use environment::*;
-use object::*;
+use super::{environment::*, object::*};
 
 use crate::{
-    interpreter::error::RuntimeError,
-    parser::{
+    parsing::{
         expr::*,
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
     },
+    runtime::error::RuntimeError,
     tokens::TokenType,
 };
-
-pub mod environment;
-pub mod error;
-pub mod object;
 
 pub struct Interpreter<'s> {
     src: &'s str,
@@ -128,7 +123,7 @@ impl Interpreter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::Scanner, parser::Parser};
+    use crate::{lexing::Scanner, parsing::Parser};
 
     use super::*;
 

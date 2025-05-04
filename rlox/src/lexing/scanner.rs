@@ -1,9 +1,5 @@
+use super::{error::LexingError, tokens::*};
 use crate::span::*;
-use error::LexingError;
-use tokens::*;
-
-pub mod error;
-pub mod tokens;
 
 pub struct Scanner<'s> {
     tokens: Vec<Token>,
