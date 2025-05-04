@@ -1,15 +1,13 @@
 pub mod error;
 pub mod expr;
-pub mod object;
 pub mod stmt;
 pub mod visitor;
 
 use std::collections::VecDeque;
 
-use crate::tokens::*;
+use crate::{interpreter::object::Object, tokens::*};
 use error::ParsingError;
 use expr::*;
-use object::Object;
 use stmt::*;
 
 // program          => declaration* EOF ;

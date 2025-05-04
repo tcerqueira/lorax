@@ -1,10 +1,10 @@
 use environment::*;
+use object::*;
 
 use crate::{
     interpreter::error::RuntimeError,
     parser::{
         expr::*,
-        object::Object,
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
     },
@@ -13,6 +13,7 @@ use crate::{
 
 pub mod environment;
 pub mod error;
+pub mod object;
 
 pub struct Interpreter<'s> {
     src: &'s str,

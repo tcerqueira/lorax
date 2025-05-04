@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::parser::object::Object;
+use super::object::Object;
 
 pub struct Environment {
     globals: HashMap<Box<str>, Object>,
