@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use thiserror::Error;
 
-use crate::{lexing::tokens::Token, parsing::expr::Expr, span::Span};
+use crate::{lexing::tokens::Token, parsing::expr::Expr, report::span::Span};
 
 #[derive(Debug, Error)]
 #[error("[line {line}] Error <{span}>: {message}")]

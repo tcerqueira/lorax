@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug, Display};
 
 use super::visitor::ExprVisitor;
-use crate::{runtime::object::Object, span::Span, tokens::Token};
+use crate::{report::Span, runtime::object::Object, tokens::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {

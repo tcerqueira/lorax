@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use thiserror::Error;
 
-use crate::span::Span;
+use crate::report::Span;
 
 #[derive(Debug, Error)]
 #[error("[line {line}] Error <{span}>: {message}")]

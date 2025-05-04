@@ -15,8 +15,8 @@ use runtime::*;
 mod error;
 mod lexing;
 mod parsing;
+mod report;
 mod runtime;
-mod span;
 
 type Result<T> = ::std::result::Result<T, Error>;
 
