@@ -33,11 +33,12 @@ fn main() -> crate::Result<()> {
 fn run_file(path: &Path) -> crate::Result<()> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("could not read source file {}", path.display()))?;
-    run(source)
+    run(source, &mut Interpreter::new())
 }
 
 fn run_prompt() -> crate::Result<()> {
     let mut buf_reader = BufReader::new(io::stdin());
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         io::stdout().flush().context("could not flush stdout")?;
@@ -49,12 +50,12 @@ fn run_prompt() -> crate::Result<()> {
         if read == 0 {
             break;
         }
-        let _ = run(line);
+        let _ = run(line, &mut interpreter);
     }
     Ok(())
 }
 
-fn run(source: String) -> crate::Result<()> {
+fn run(source: String, interpreter: &mut Interpreter) -> crate::Result<()> {
     let reporter = Reporter::new(&source);
     let tokens = Scanner::new(&source)
         .scan_tokens()
@@ -64,7 +65,7 @@ fn run(source: String) -> crate::Result<()> {
         .parse()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    Interpreter::new()
+    interpreter
         .interpret(program)
         .inspect_err(|e| reporter.report(e))?;
 
