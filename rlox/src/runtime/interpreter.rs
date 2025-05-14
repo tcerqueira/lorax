@@ -20,6 +20,15 @@ impl Interpreter {
             env: Environment::new(),
         }
     }
+
+    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+        self.env.push_scope();
+        for stmt in statements {
+            self.execute(stmt).inspect_err(|_| self.env.pop_scope())?;
+        }
+        self.env.pop_scope();
+        Ok(())
+    }
 }
 
 impl ExprVisitor for Interpreter {
@@ -103,12 +112,7 @@ impl StmtVisitor for Interpreter {
     }
 
     fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T {
-        self.env.push_scope();
-        for stmt in &stmt.statements {
-            self.execute(stmt).inspect_err(|_| self.env.pop_scope())?;
-        }
-        self.env.pop_scope();
-        Ok(())
+        self.execute_block(&stmt.statements)
     }
 }
 

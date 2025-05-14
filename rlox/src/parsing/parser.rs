@@ -109,12 +109,15 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek() {
             Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
-            Some(tt_pat!(TokenType::LeftBrace)) => self.block(),
+            Some(tt_pat!(TokenType::LeftBrace)) => Ok(StmtBlock {
+                statements: self.block()?,
+            }
+            .into()),
             _ => self.expression_stmt(),
         }
     }
 
-    fn block(&mut self) -> Result<Stmt, ParsingError> {
+    fn block(&mut self) -> Result<Vec<Stmt>, ParsingError> {
         self.consume(TokenType::LeftBrace)?;
 
         let mut statements = vec![];
@@ -123,7 +126,7 @@ impl Parser {
         }
 
         self.consume(TokenType::RightBrace)?;
-        Ok(StmtBlock { statements }.into())
+        Ok(statements)
     }
 
     fn expression_stmt(&mut self) -> Result<Stmt, ParsingError> {
