@@ -6,6 +6,7 @@ pub enum Stmt {
     Print(StmtPrint),
     Expression(StmtExpression),
     Var(StmtVar),
+    Block(StmtBlock),
 }
 
 #[derive(Debug, Clone)]
@@ -26,12 +27,18 @@ pub struct StmtVar {
     pub initializer: Option<Expr>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StmtBlock {
+    pub statements: Vec<Stmt>,
+}
+
 impl Stmt {
     pub fn accept<R>(&self, visitor: &mut impl StmtVisitor<T = R>) -> R {
         match self {
-            Stmt::Print(stmt_print) => visitor.visit_print(stmt_print),
-            Stmt::Expression(stmt_expression) => visitor.visit_expression(stmt_expression),
-            Stmt::Var(stmt_var) => visitor.visit_var(stmt_var),
+            Stmt::Print(s) => visitor.visit_print(s),
+            Stmt::Expression(s) => visitor.visit_expression(s),
+            Stmt::Var(s) => visitor.visit_var(s),
+            Stmt::Block(s) => visitor.visit_block(s),
         }
     }
 }
@@ -51,5 +58,11 @@ impl From<StmtExpression> for Stmt {
 impl From<StmtVar> for Stmt {
     fn from(value: StmtVar) -> Self {
         Stmt::Var(value)
+    }
+}
+
+impl From<StmtBlock> for Stmt {
+    fn from(value: StmtBlock) -> Self {
+        Stmt::Block(value)
     }
 }

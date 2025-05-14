@@ -6,7 +6,8 @@ use crate::{runtime::object::Object, tokens::*};
 // program          => declaration* EOF ;
 //
 // declaration      => varDecl | statement ;
-// statement        => exprStmt | printStmt ;
+// statement        => exprStmt | printStmt | block ;
+// block            => "{" declaration* "}"
 //
 // varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
 // exprStmt         => expression ";" ;
@@ -108,8 +109,21 @@ impl Parser {
     fn statement(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek() {
             Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
+            Some(tt_pat!(TokenType::LeftBrace)) => self.block(),
             _ => self.expression_stmt(),
         }
+    }
+
+    fn block(&mut self) -> Result<Stmt, ParsingError> {
+        self.consume(TokenType::LeftBrace)?;
+
+        let mut statements = vec![];
+        while self.peek().is_some_and(|t| t.ty != TokenType::RightBrace) {
+            statements.push(self.declaration()?);
+        }
+
+        self.consume(TokenType::RightBrace)?;
+        Ok(StmtBlock { statements }.into())
     }
 
     fn expression_stmt(&mut self) -> Result<Stmt, ParsingError> {

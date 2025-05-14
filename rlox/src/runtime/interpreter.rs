@@ -101,6 +101,15 @@ impl StmtVisitor for Interpreter {
         self.env.define(stmt.ident.ty.ident().into(), initializer);
         Ok(())
     }
+
+    fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T {
+        self.env.push_scope();
+        for stmt in &stmt.statements {
+            self.execute(stmt).inspect_err(|_| self.env.pop_scope())?;
+        }
+        self.env.pop_scope();
+        Ok(())
+    }
 }
 
 impl Interpreter {
