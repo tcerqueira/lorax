@@ -7,14 +7,16 @@ use crate::{runtime::object::Object, tokens::*};
 //
 // declaration      => varDecl | statement ;
 // statement        => exprStmt
-//                  | printStmt
-//                  | block
 //                  | ifStmt;
-// block            => "{" declaration* "}"
+//                  | printStmt
+//                  | whileStmt
+//                  | block ;
+// block            => "{" declaration* "}" ;
 //
 // varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
 // exprStmt         => expression ";" ;
 // printStmt        => "print" expression ";" ;
+// whileStmt        => "while" "(" expression ")" statement ;
 // ifStmt           => "if" "(" expression ")" statement
 //                  ( "else" statement )? ;
 //
@@ -106,6 +108,7 @@ impl Parser {
         match self.peek().map(Token::ty) {
             Some(TokenType::If) => self.if_stmt(),
             Some(TokenType::Print) => self.print_stmt(),
+            Some(TokenType::While) => self.while_stmt(),
             Some(TokenType::LeftBrace) => Ok(StmtBlock {
                 statements: self.block()?,
             }
@@ -137,6 +140,15 @@ impl Parser {
         let expr = self.expression()?;
         self.consume(TokenType::Semicolon)?;
         Ok(StmtPrint { print_token, expr }.into())
+    }
+
+    fn while_stmt(&mut self) -> Result<Stmt, ParsingError> {
+        self.consume(TokenType::While)?;
+        self.consume(TokenType::LeftParen)?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen)?;
+        let body = Box::new(self.statement()?);
+        Ok(StmtWhile { condition, body }.into())
     }
 
     fn if_stmt(&mut self) -> Result<Stmt, ParsingError> {

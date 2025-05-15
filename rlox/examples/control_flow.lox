@@ -10,3 +10,9 @@ if (false or true and b) {
     b = b + " world!";
 }
 print b;
+
+var c = true;
+while (c) {
+    c = false;
+}
+print c;

@@ -136,6 +136,13 @@ impl StmtVisitor for Interpreter {
             Ok(())
         }
     }
+
+    fn visit_while(&mut self, stmt: &StmtWhile) -> Self::T {
+        while self.evaluate(&stmt.condition)?.is_truthy() {
+            self.execute(&stmt.body)?;
+        }
+        Ok(())
+    }
 }
 
 impl Interpreter {

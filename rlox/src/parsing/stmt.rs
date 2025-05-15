@@ -8,6 +8,7 @@ pub enum Stmt {
     Var(StmtVar),
     Block(StmtBlock),
     If(StmtIf),
+    While(StmtWhile),
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,12 @@ pub struct StmtIf {
     pub else_branch: Option<Box<Stmt>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StmtWhile {
+    pub condition: Expr,
+    pub body: Box<Stmt>,
+}
+
 impl Stmt {
     pub fn accept<R>(&self, visitor: &mut impl StmtVisitor<T = R>) -> R {
         match self {
@@ -48,6 +55,7 @@ impl Stmt {
             Stmt::Var(s) => visitor.visit_var(s),
             Stmt::Block(s) => visitor.visit_block(s),
             Stmt::If(s) => visitor.visit_if(s),
+            Stmt::While(s) => visitor.visit_while(s),
         }
     }
 }
@@ -79,5 +87,11 @@ impl From<StmtBlock> for Stmt {
 impl From<StmtIf> for Stmt {
     fn from(value: StmtIf) -> Self {
         Stmt::If(value)
+    }
+}
+
+impl From<StmtWhile> for Stmt {
+    fn from(value: StmtWhile) -> Self {
+        Stmt::While(value)
     }
 }
