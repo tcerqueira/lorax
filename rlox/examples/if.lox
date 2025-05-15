@@ -4,3 +4,9 @@ if (a) {
 } else {
     print "falsey";
 }
+
+var b = "hello";
+if (false or true and b) {
+    b = b + " world!";
+}
+print b;

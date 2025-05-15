@@ -19,7 +19,9 @@ use crate::{runtime::object::Object, tokens::*};
 //                  ( "else" statement )? ;
 //
 // expression       => assignment ;
-// assignment       => IDENTIFIER "=" assignment | equality ;
+// assignment       => IDENTIFIER "=" assignment | logic_or ;
+// logic_or         => logic_and ( "or" logic_and )*
+// logic_and        => equality ( "and" equality )*
 // equality         => comparison ( ("!=" | "==") comparison )* ;
 // comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
 // term             => factor ( ("-" | "+") factor )* ;
@@ -41,13 +43,13 @@ pub struct Parser {
 #[macro_export]
 macro_rules! tt_pat {
     ($bind:ident @ $pat:pat) => {
-        $bind @ Token {
+        $bind @ $crate::lexing::tokens::Token {
             ty: $pat,
             ..
         }
     };
     [$pat:pat] => {
-        Token {
+        $crate::lexing::tokens::Token {
             ty: $pat,
             ..
         }
@@ -83,8 +85,8 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParsingError> {
-        match self.peek() {
-            Some(tt_pat!(TokenType::Var)) => self.var_decl(),
+        match self.peek().map(Token::ty) {
+            Some(TokenType::Var) => self.var_decl(),
             _ => self.statement(),
         }
     }
@@ -101,10 +103,10 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParsingError> {
-        match self.peek() {
-            Some(tt_pat!(TokenType::If)) => self.if_stmt(),
-            Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
-            Some(tt_pat!(TokenType::LeftBrace)) => Ok(StmtBlock {
+        match self.peek().map(Token::ty) {
+            Some(TokenType::If) => self.if_stmt(),
+            Some(TokenType::Print) => self.print_stmt(),
+            Some(TokenType::LeftBrace) => Ok(StmtBlock {
                 statements: self.block()?,
             }
             .into()),
@@ -162,7 +164,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, ParsingError> {
-        let expr = self.equality()?;
+        let expr = self.logic_or()?;
         if let Some(ref equals) = self.matches(TokenType::Equal) {
             let value = Box::new(self.assignment()?);
 
@@ -170,6 +172,34 @@ impl Parser {
                 Expr::Variable(ExprVariable { name }) => Ok(ExprAssign { name, value }.into()),
                 _ => Err(ParsingError::custom(equals, "Invalid assignment target.")),
             };
+        }
+        Ok(expr)
+    }
+
+    fn logic_or(&mut self) -> Result<Expr, ParsingError> {
+        let mut expr = self.logic_and()?;
+        while let Some(op) = self.matches(TokenType::Or) {
+            let right = self.logic_and()?;
+            expr = ExprLogical {
+                op,
+                left: Box::new(expr),
+                right: Box::new(right),
+            }
+            .into();
+        }
+        Ok(expr)
+    }
+
+    fn logic_and(&mut self) -> Result<Expr, ParsingError> {
+        let mut expr = self.equality()?;
+        while let Some(op) = self.matches(TokenType::And) {
+            let right = self.equality()?;
+            expr = ExprLogical {
+                op,
+                left: Box::new(expr),
+                right: Box::new(right),
+            }
+            .into();
         }
         Ok(expr)
     }
@@ -285,20 +315,18 @@ impl Parser {
 
     fn synchronize(&mut self) {
         while let Some(tok) = self.advance() {
-            match tok {
-                tt_pat!(TokenType::Semicolon) => return,
-                _ => match self.peek() {
+            match tok.ty() {
+                TokenType::Semicolon => return,
+                _ => match self.peek().map(Token::ty) {
                     Some(
-                        tt_pat!(
-                            TokenType::Class
-                                | TokenType::For
-                                | TokenType::Fun
-                                | TokenType::If
-                                | TokenType::Print
-                                | TokenType::Return
-                                | TokenType::Var
-                                | TokenType::While
-                        ),
+                        TokenType::Class
+                        | TokenType::For
+                        | TokenType::Fun
+                        | TokenType::If
+                        | TokenType::Print
+                        | TokenType::Return
+                        | TokenType::Var
+                        | TokenType::While,
                     ) => return,
                     _ => continue,
                 },

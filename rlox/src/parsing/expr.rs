@@ -11,6 +11,7 @@ pub enum Expr {
     Unary(ExprUnary),
     Variable(ExprVariable),
     Assign(ExprAssign),
+    Logical(ExprLogical),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +53,13 @@ pub struct ExprAssign {
     pub value: Box<Expr>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprLogical {
+    pub op: Token,
+    pub left: Box<Expr>,
+    pub right: Box<Expr>,
+}
+
 impl Expr {
     pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
         match self {
@@ -61,6 +69,7 @@ impl Expr {
             Expr::Unary(e) => visitor.visit_unary(e),
             Expr::Variable(e) => visitor.visit_variable(e),
             Expr::Assign(e) => visitor.visit_assign(e),
+            Expr::Logical(e) => visitor.visit_logical(e),
         }
     }
 
@@ -73,6 +82,7 @@ impl Expr {
             Expr::Unary(e) => e.op.span.join(&e.right.span()),
             Expr::Variable(e) => e.name.span.clone(),
             Expr::Assign(e) => e.name.span.join(&e.value.span()),
+            Expr::Logical(e) => e.left.span().join(&e.right.span()),
         }
     }
 
@@ -131,6 +141,12 @@ impl ExprVisitor for StdPrinter<'_, '_> {
         write!(self.fmt, "{} = ", expr.name.ty)?;
         expr.value.accept(self)
     }
+
+    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
+        expr.left.accept(self)?;
+        write!(self.fmt, " {} ", expr.op.ty)?;
+        expr.right.accept(self)
+    }
 }
 
 pub struct AstPrinter<'a, 'f> {
@@ -173,6 +189,14 @@ impl ExprVisitor for AstPrinter<'_, '_> {
         expr.value.accept(self)?;
         write!(self.fmt, ")")
     }
+
+    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
+        write!(self.fmt, "({} ", expr.op.ty)?;
+        expr.left.accept(self)?;
+        write!(self.fmt, " ")?;
+        expr.right.accept(self)?;
+        write!(self.fmt, ")")
+    }
 }
 
 impl From<ExprBinary> for Expr {
@@ -208,6 +232,12 @@ impl From<ExprVariable> for Expr {
 impl From<ExprAssign> for Expr {
     fn from(value: ExprAssign) -> Self {
         Self::Assign(value)
+    }
+}
+
+impl From<ExprLogical> for Expr {
+    fn from(value: ExprLogical) -> Self {
+        Self::Logical(value)
     }
 }
 

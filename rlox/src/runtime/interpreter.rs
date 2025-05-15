@@ -83,6 +83,18 @@ impl ExprVisitor for Interpreter {
             .assign(expr.name.ty.ident(), value)
             .map_err(|e| RuntimeError::custom(&expr.name, e))
     }
+
+    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
+        let left = self.evaluate(&expr.left)?;
+        match (&expr.op.ty, left.is_truthy()) {
+            (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
+            (TokenType::Or, false) | (TokenType::And, true) => self.evaluate(&expr.right),
+            (invalid_token, _) => panic!(
+                "parsing gone wrong, token of a logical expression cannot be '{}'",
+                invalid_token
+            ),
+        }
+    }
 }
 
 impl StmtVisitor for Interpreter {

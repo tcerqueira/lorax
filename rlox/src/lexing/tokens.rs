@@ -65,6 +65,12 @@ pub struct Token {
     pub span: Span,
 }
 
+impl Token {
+    pub fn ty(&self) -> &TokenType {
+        &self.ty
+    }
+}
+
 impl Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
