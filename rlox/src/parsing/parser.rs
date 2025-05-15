@@ -6,12 +6,17 @@ use crate::{runtime::object::Object, tokens::*};
 // program          => declaration* EOF ;
 //
 // declaration      => varDecl | statement ;
-// statement        => exprStmt | printStmt | block ;
+// statement        => exprStmt
+//                  | printStmt
+//                  | block
+//                  | ifStmt;
 // block            => "{" declaration* "}"
 //
 // varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
 // exprStmt         => expression ";" ;
 // printStmt        => "print" expression ";" ;
+// ifStmt           => "if" "(" expression ")" statement
+//                  ( "else" statement )? ;
 //
 // expression       => assignment ;
 // assignment       => IDENTIFIER "=" assignment | equality ;
@@ -88,7 +93,7 @@ impl Parser {
         self.consume(TokenType::Var)?;
         let ident = self.consume_with(|t| matches!(t, TokenType::Identifier(_)), "identifier")?;
         let initializer = self
-            .matches(&TokenType::Equal)
+            .matches(TokenType::Equal)
             .map(|_| self.expression())
             .transpose()?;
         self.consume(TokenType::Semicolon)?;
@@ -97,6 +102,7 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek() {
+            Some(tt_pat!(TokenType::If)) => self.if_stmt(),
             Some(tt_pat!(TokenType::Print)) => self.print_stmt(),
             Some(tt_pat!(TokenType::LeftBrace)) => Ok(StmtBlock {
                 statements: self.block()?,
@@ -131,13 +137,33 @@ impl Parser {
         Ok(StmtPrint { print_token, expr }.into())
     }
 
+    fn if_stmt(&mut self) -> Result<Stmt, ParsingError> {
+        self.consume(TokenType::If)?;
+        self.consume(TokenType::LeftParen)?;
+        let condition = self.expression()?;
+        self.consume(TokenType::RightParen)?;
+        let then_branch = Box::new(self.statement()?);
+
+        let else_branch = self
+            .matches(TokenType::Else)
+            .map(|_| self.statement().map(Box::new))
+            .transpose()?;
+
+        Ok(StmtIf {
+            condition,
+            then_branch,
+            else_branch,
+        }
+        .into())
+    }
+
     pub(crate) fn expression(&mut self) -> Result<Expr, ParsingError> {
         self.assignment()
     }
 
     fn assignment(&mut self) -> Result<Expr, ParsingError> {
         let expr = self.equality()?;
-        if let Some(ref equals) = self.matches(&TokenType::Equal) {
+        if let Some(ref equals) = self.matches(TokenType::Equal) {
             let value = Box::new(self.assignment()?);
 
             return match expr {
@@ -280,9 +306,9 @@ impl Parser {
         }
     }
 
-    fn matches(&mut self, patterns: &TokenType) -> Option<Token> {
+    fn matches(&mut self, patterns: TokenType) -> Option<Token> {
         match self.peek() {
-            Some(tok) if patterns == &tok.ty => {
+            Some(tok) if patterns == tok.ty => {
                 let tok = self
                     .advance()
                     .expect("peek has a value in this branch, it's safe to advance");

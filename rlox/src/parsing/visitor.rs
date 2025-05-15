@@ -18,4 +18,5 @@ pub trait StmtVisitor {
     fn visit_expression(&mut self, stmt: &StmtExpression) -> Self::T;
     fn visit_var(&mut self, stmt: &StmtVar) -> Self::T;
     fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T;
+    fn visit_if(&mut self, stmt: &StmtIf) -> Self::T;
 }

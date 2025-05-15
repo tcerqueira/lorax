@@ -114,6 +114,16 @@ impl StmtVisitor for Interpreter {
     fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T {
         self.execute_block(&stmt.statements)
     }
+
+    fn visit_if(&mut self, stmt: &StmtIf) -> Self::T {
+        if self.evaluate(&stmt.condition)?.is_truthy() {
+            self.execute(&stmt.then_branch)
+        } else if let Some(else_branch) = &stmt.else_branch {
+            self.execute(else_branch)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Interpreter {

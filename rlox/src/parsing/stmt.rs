@@ -7,6 +7,7 @@ pub enum Stmt {
     Expression(StmtExpression),
     Var(StmtVar),
     Block(StmtBlock),
+    If(StmtIf),
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +33,13 @@ pub struct StmtBlock {
     pub statements: Vec<Stmt>,
 }
 
+#[derive(Debug, Clone)]
+pub struct StmtIf {
+    pub condition: Expr,
+    pub then_branch: Box<Stmt>,
+    pub else_branch: Option<Box<Stmt>>,
+}
+
 impl Stmt {
     pub fn accept<R>(&self, visitor: &mut impl StmtVisitor<T = R>) -> R {
         match self {
@@ -39,6 +47,7 @@ impl Stmt {
             Stmt::Expression(s) => visitor.visit_expression(s),
             Stmt::Var(s) => visitor.visit_var(s),
             Stmt::Block(s) => visitor.visit_block(s),
+            Stmt::If(s) => visitor.visit_if(s),
         }
     }
 }
@@ -64,5 +73,11 @@ impl From<StmtVar> for Stmt {
 impl From<StmtBlock> for Stmt {
     fn from(value: StmtBlock) -> Self {
         Stmt::Block(value)
+    }
+}
+
+impl From<StmtIf> for Stmt {
+    fn from(value: StmtIf) -> Self {
+        Stmt::If(value)
     }
 }
