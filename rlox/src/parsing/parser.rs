@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt::Display};
 
 use super::{error::ParsingError, expr::*, stmt::*};
 use crate::{runtime::object::Object, tokens::*};
@@ -49,17 +49,6 @@ macro_rules! tt_pat {
     };
 }
 
-/// Consume but for more complex patterns that require pattern matching
-macro_rules! consume {
-    ($this:expr, $pat:pat, $expected:expr) => {
-        match $this.advance() {
-            Some(tt_pat!(tok @ $pat)) => Ok(tok),
-            Some(tok) => Err(ParsingError::expected($expected, &tok)),
-            None => Err(ParsingError::expected($expected, &$this.eof)),
-        }
-    };
-}
-
 impl Parser {
     pub fn new(mut tokens: Vec<Token>) -> Self {
         let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
@@ -97,9 +86,9 @@ impl Parser {
 
     fn var_decl(&mut self) -> Result<Stmt, ParsingError> {
         self.consume(TokenType::Var)?;
-        let ident = consume!(self, TokenType::Identifier(_), "identifier")?;
+        let ident = self.consume_with(|t| matches!(t, TokenType::Identifier(_)), "identifier")?;
         let initializer = self
-            .matches(&[TokenType::Equal])
+            .matches(&TokenType::Equal)
             .map(|_| self.expression())
             .transpose()?;
         self.consume(TokenType::Semicolon)?;
@@ -148,7 +137,7 @@ impl Parser {
 
     fn assignment(&mut self) -> Result<Expr, ParsingError> {
         let expr = self.equality()?;
-        if let Some(ref equals) = self.matches(&[TokenType::Equal]) {
+        if let Some(ref equals) = self.matches(&TokenType::Equal) {
             let value = Box::new(self.assignment()?);
 
             return match expr {
@@ -161,7 +150,9 @@ impl Parser {
 
     fn equality(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.matches(&[TokenType::BangEqual, TokenType::EqualEqual]) {
+        while let Some(op) =
+            self.matches_with(|t| matches!(t, TokenType::BangEqual | TokenType::EqualEqual))
+        {
             let right = self.comparison()?;
             expr = ExprBinary {
                 op,
@@ -176,12 +167,15 @@ impl Parser {
     fn comparison(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.term()?;
 
-        while let Some(op) = self.matches(&[
-            TokenType::Greater,
-            TokenType::GreaterEqual,
-            TokenType::Less,
-            TokenType::LessEqual,
-        ]) {
+        while let Some(op) = self.matches_with(|t| {
+            matches!(
+                t,
+                TokenType::Greater
+                    | TokenType::GreaterEqual
+                    | TokenType::Less
+                    | TokenType::LessEqual,
+            )
+        }) {
             let right = self.term()?;
             expr = ExprBinary {
                 op,
@@ -195,7 +189,8 @@ impl Parser {
 
     fn term(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.matches(&[TokenType::Minus, TokenType::Plus]) {
+        while let Some(op) = self.matches_with(|t| matches!(t, TokenType::Minus | TokenType::Plus))
+        {
             let right = self.factor()?;
             expr = ExprBinary {
                 op,
@@ -209,7 +204,8 @@ impl Parser {
 
     fn factor(&mut self) -> Result<Expr, ParsingError> {
         let mut expr = self.unary()?;
-        while let Some(op) = self.matches(&[TokenType::Slash, TokenType::Star]) {
+        while let Some(op) = self.matches_with(|t| matches!(t, TokenType::Slash | TokenType::Star))
+        {
             let right = self.unary()?;
             expr = ExprBinary {
                 op,
@@ -222,7 +218,7 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr, ParsingError> {
-        let expr = match self.matches(&[TokenType::Bang, TokenType::Minus]) {
+        let expr = match self.matches_with(|t| matches!(t, TokenType::Bang | TokenType::Minus)) {
             Some(op) => ExprUnary {
                 op,
                 right: Box::new(self.unary()?),
@@ -284,9 +280,21 @@ impl Parser {
         }
     }
 
-    fn matches(&mut self, patterns: &[TokenType]) -> Option<Token> {
+    fn matches(&mut self, patterns: &TokenType) -> Option<Token> {
         match self.peek() {
-            Some(tok) if patterns.contains(&tok.ty) => {
+            Some(tok) if patterns == &tok.ty => {
+                let tok = self
+                    .advance()
+                    .expect("peek has a value in this branch, it's safe to advance");
+                Some(tok)
+            }
+            _ => None,
+        }
+    }
+
+    fn matches_with(&mut self, pattern_fn: impl FnOnce(&TokenType) -> bool) -> Option<Token> {
+        match self.peek() {
+            Some(tok) if pattern_fn(&tok.ty) => {
                 let tok = self
                     .advance()
                     .expect("peek has a value in this branch, it's safe to advance");
@@ -301,6 +309,18 @@ impl Parser {
             Some(tok) if pattern == tok.ty => Ok(tok),
             Some(tok) => Err(ParsingError::expected(pattern, &tok)),
             None => Err(ParsingError::expected(pattern, &self.eof)),
+        }
+    }
+
+    fn consume_with(
+        &mut self,
+        pattern_fn: impl FnOnce(&TokenType) -> bool,
+        expected_tok: impl Display,
+    ) -> Result<Token, ParsingError> {
+        match self.advance() {
+            Some(tok) if pattern_fn(&tok.ty) => Ok(tok),
+            Some(tok) => Err(ParsingError::expected(expected_tok, &tok)),
+            None => Err(ParsingError::expected(expected_tok, &self.eof)),
         }
     }
 
