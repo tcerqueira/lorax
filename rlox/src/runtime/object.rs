@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    cmp::Ordering,
     fmt::{Debug, Display},
     ops::{Add, Deref, DerefMut, Div, Mul, Neg, Not, Sub},
     rc::Rc,
@@ -17,8 +18,28 @@ impl<T> Nil for Option<T> {
     }
 }
 
-pub trait ObjectInner: Any + Debug + Display {}
-impl<T: Any + Debug + Display> ObjectInner for T {}
+pub trait ObjPartialEq {
+    fn eq(&self, other: &dyn Any) -> bool;
+}
+
+impl<T: PartialEq + Any> ObjPartialEq for T {
+    fn eq(&self, other: &dyn Any) -> bool {
+        other.downcast_ref::<T>().is_some_and(|x| self.eq(x))
+    }
+}
+
+pub trait ObjPartialOrd {
+    fn partial_cmp(&self, other: &dyn Any) -> Option<Ordering>;
+}
+
+impl<T: PartialOrd + Any> ObjPartialOrd for T {
+    fn partial_cmp(&self, other: &dyn Any) -> Option<Ordering> {
+        other.downcast_ref::<T>().and_then(|x| self.partial_cmp(x))
+    }
+}
+
+pub trait ObjectInner: Any + ObjPartialEq + ObjPartialOrd + Debug + Display {}
+impl<T: Any + ObjPartialEq + ObjPartialOrd + Debug + Display> ObjectInner for T {}
 
 #[derive(Debug, Clone)]
 pub struct Object(Option<Rc<dyn ObjectInner>>);
@@ -117,6 +138,26 @@ impl Not for Object {
 
     fn not(self) -> Self::Output {
         Object::new(!self.is_truthy())
+    }
+}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (None, None) => true,
+            (Some(this), Some(other)) => this.eq(other.as_ref()),
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Object {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (&self.0, &other.0) {
+            (None, _) => None,
+            (_, None) => None,
+            (Some(this), Some(other)) => this.partial_cmp(other.as_ref()),
+        }
     }
 }
 
