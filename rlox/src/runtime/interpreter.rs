@@ -265,4 +265,56 @@ mod tests {
             .expect_err("can't add strings and numbers");
         Ok(())
     }
+
+    mod examples {
+        use super::*;
+
+        fn program(source: &str) -> Vec<Stmt> {
+            let tokens = Scanner::new(source)
+                .scan_tokens()
+                .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
+                .expect("token error");
+            Parser::new(tokens)
+                .parse()
+                .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
+                .expect("syntax error")
+        }
+
+        fn test_example(source: &str) {
+            let ast = program(source);
+            Interpreter::new()
+                .interpret(ast)
+                .expect("program runs successfully");
+        }
+
+        #[test]
+        fn assign() {
+            test_example(include_str!("../../examples/assign.lox"));
+        }
+
+        #[test]
+        fn control_flow() {
+            test_example(include_str!("../../examples/control_flow.lox"));
+        }
+
+        #[test]
+        fn precedence() {
+            test_example(include_str!("../../examples/precedence.lox"));
+        }
+
+        #[test]
+        fn print() {
+            test_example(include_str!("../../examples/print.lox"));
+        }
+
+        #[test]
+        fn scopes() {
+            test_example(include_str!("../../examples/scopes.lox"));
+        }
+
+        #[test]
+        fn variables() {
+            test_example(include_str!("../../examples/variables.lox"));
+        }
+    }
 }

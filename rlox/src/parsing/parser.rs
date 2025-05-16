@@ -381,12 +381,12 @@ impl Parser {
     fn consume_with(
         &mut self,
         pattern_fn: impl FnOnce(&TokenType) -> bool,
-        expected_tok: impl Display,
+        expected_msg: impl Display,
     ) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern_fn(&tok.ty) => Ok(tok),
-            Some(tok) => Err(ParsingError::expected(expected_tok, &tok)),
-            None => Err(ParsingError::expected(expected_tok, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(expected_msg, &tok)),
+            None => Err(ParsingError::expected(expected_msg, &self.eof)),
         }
     }
 
