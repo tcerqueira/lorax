@@ -11,8 +11,8 @@ if (false or true and b) {
 }
 print b;
 
-var c = true;
-while (c) {
-    c = false;
+var c = 3;
+while (c > 0) {
+    c = c - 1;
+    print c;
 }
-print c;

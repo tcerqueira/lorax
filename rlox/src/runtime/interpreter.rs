@@ -44,6 +44,7 @@ impl ExprVisitor for Interpreter {
             TokenType::Minus => (left - right).map_err(err_handler)?,
             TokenType::Star => (left * right).map_err(err_handler)?,
             TokenType::Slash => (left / right).map_err(err_handler)?,
+            // FIXME: call partial_cmp and handle None case ?
             TokenType::Greater => Object::new(left > right),
             TokenType::GreaterEqual => Object::new(left >= right),
             TokenType::Less => Object::new(left < right),
@@ -272,55 +273,31 @@ mod tests {
         Ok(())
     }
 
-    mod examples {
-        use super::*;
+    fn program(source: &str) -> Vec<Stmt> {
+        let tokens = Scanner::new(source)
+            .scan_tokens()
+            .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
+            .expect("token error");
+        Parser::new(tokens)
+            .parse()
+            .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
+            .expect("syntax error")
+    }
 
-        fn program(source: &str) -> Vec<Stmt> {
-            let tokens = Scanner::new(source)
-                .scan_tokens()
-                .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
-                .expect("token error");
-            Parser::new(tokens)
-                .parse()
-                .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
-                .expect("syntax error")
-        }
+    #[test]
+    fn test_examples() {
+        let lox_examples = std::fs::read_dir("./examples")
+            .unwrap()
+            .flatten()
+            .filter(|f| f.file_name().into_string().unwrap().ends_with(".lox"))
+            .map(|f| (f.path(), std::fs::read_to_string(f.path())));
 
-        fn test_example(source: &str) {
-            let ast = program(source);
+        for (path, src) in lox_examples {
+            let src = src.unwrap_or_else(|e| panic!("could not open example file {path:?}: {e:?}"));
+            let ast = program(&src);
             Interpreter::new()
                 .interpret(ast)
                 .expect("program runs successfully");
-        }
-
-        #[test]
-        fn assign() {
-            test_example(include_str!("../../examples/assign.lox"));
-        }
-
-        #[test]
-        fn control_flow() {
-            test_example(include_str!("../../examples/control_flow.lox"));
-        }
-
-        #[test]
-        fn precedence() {
-            test_example(include_str!("../../examples/precedence.lox"));
-        }
-
-        #[test]
-        fn print() {
-            test_example(include_str!("../../examples/print.lox"));
-        }
-
-        #[test]
-        fn scopes() {
-            test_example(include_str!("../../examples/scopes.lox"));
-        }
-
-        #[test]
-        fn variables() {
-            test_example(include_str!("../../examples/variables.lox"));
         }
     }
 }
