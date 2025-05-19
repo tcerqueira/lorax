@@ -48,7 +48,7 @@ impl ExprVisitor for Interpreter {
             TokenType::Greater => Object::new(left > right),
             TokenType::GreaterEqual => Object::new(left >= right),
             TokenType::Less => Object::new(left < right),
-            TokenType::LessEqual => Object::new(left >= right),
+            TokenType::LessEqual => Object::new(left <= right),
             TokenType::EqualEqual => Object::new(left == right),
             TokenType::BangEqual => Object::new(left != right),
             _ => panic!("Unexpected binary operator: {:?}", expr.op),

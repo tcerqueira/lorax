@@ -60,6 +60,18 @@ impl Stmt {
     }
 }
 
+impl From<Expr> for StmtExpression {
+    fn from(expr: Expr) -> Self {
+        StmtExpression { expr }
+    }
+}
+
+impl From<Expr> for Stmt {
+    fn from(expr: Expr) -> Self {
+        Stmt::Expression(expr.into())
+    }
+}
+
 impl From<StmtPrint> for Stmt {
     fn from(value: StmtPrint) -> Self {
         Stmt::Print(value)

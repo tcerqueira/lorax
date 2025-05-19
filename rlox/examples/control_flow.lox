@@ -16,3 +16,7 @@ while (c > 0) {
     c = c - 1;
     print c;
 }
+
+for (var i = 1; i <= 3; i = i + 1) {
+    print i * i;
+}

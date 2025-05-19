@@ -10,6 +10,7 @@ use crate::{runtime::object::Object, tokens::*};
 //                  | ifStmt;
 //                  | printStmt
 //                  | whileStmt
+//                  | forStmt
 //                  | block ;
 // block            => "{" declaration* "}" ;
 //
@@ -17,6 +18,9 @@ use crate::{runtime::object::Object, tokens::*};
 // exprStmt         => expression ";" ;
 // printStmt        => "print" expression ";" ;
 // whileStmt        => "while" "(" expression ")" statement ;
+// forStmt          => "for" "(" ( varDecl | exprStmt | ";" )
+//                  expression? ";"
+//                  expression? ")" statement ;
 // ifStmt           => "if" "(" expression ")" statement
 //                  ( "else" statement )? ;
 //
@@ -87,7 +91,7 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParsingError> {
-        match self.peek().map(Token::ty) {
+        match self.peek_type() {
             Some(TokenType::Var) => self.var_decl(),
             _ => self.statement(),
         }
@@ -105,10 +109,11 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParsingError> {
-        match self.peek().map(Token::ty) {
+        match self.peek_type() {
             Some(TokenType::If) => self.if_stmt(),
             Some(TokenType::Print) => self.print_stmt(),
             Some(TokenType::While) => self.while_stmt(),
+            Some(TokenType::For) => self.for_stmt(),
             Some(TokenType::LeftBrace) => Ok(StmtBlock {
                 statements: self.block()?,
             }
@@ -149,6 +154,59 @@ impl Parser {
         self.consume(TokenType::RightParen)?;
         let body = Box::new(self.statement()?);
         Ok(StmtWhile { condition, body }.into())
+    }
+
+    fn for_stmt(&mut self) -> Result<Stmt, ParsingError> {
+        self.consume(TokenType::For)?;
+        self.consume(TokenType::LeftParen)?;
+        let initialization = match self.peek_type() {
+            Some(TokenType::Semicolon) => {
+                self.consume(TokenType::Semicolon)?;
+                None
+            }
+            Some(TokenType::Var) => Some(self.var_decl()?),
+            _ => Some(self.expression_stmt()?),
+        };
+
+        let condition = match self.peek_type() {
+            Some(TokenType::Semicolon) => None,
+            _ => Some(self.expression()?),
+        };
+        self.consume(TokenType::Semicolon)?;
+
+        let increment = match self.peek_type() {
+            Some(TokenType::RightParen) => None,
+            _ => Some(self.expression()?),
+        };
+        self.consume(TokenType::RightParen)?;
+
+        let mut body = self.statement()?;
+        if let Some(increment) = increment {
+            body = StmtBlock {
+                statements: vec![body, increment.into()],
+            }
+            .into();
+        };
+        let condition = condition.unwrap_or_else(|| {
+            ExprLiteral {
+                literal: Object::new(true),
+                // FIXME: desugaring results in a fake literal token
+                token: self.eof.clone(),
+            }
+            .into()
+        });
+        let while_stmt = StmtWhile {
+            body: Box::new(body),
+            condition,
+        }
+        .into();
+        Ok(match initialization {
+            Some(initialization) => StmtBlock {
+                statements: vec![initialization, while_stmt],
+            }
+            .into(),
+            None => while_stmt,
+        })
     }
 
     fn if_stmt(&mut self) -> Result<Stmt, ParsingError> {
@@ -329,7 +387,7 @@ impl Parser {
         while let Some(tok) = self.advance() {
             match tok.ty() {
                 TokenType::Semicolon => return,
-                _ => match self.peek().map(Token::ty) {
+                _ => match self.peek_type() {
                     Some(
                         TokenType::Class
                         | TokenType::For
@@ -396,6 +454,10 @@ impl Parser {
 
     fn peek(&self) -> Option<&Token> {
         self.tokens.front()
+    }
+
+    fn peek_type(&self) -> Option<&TokenType> {
+        self.peek().map(Token::ty)
     }
 }
 
