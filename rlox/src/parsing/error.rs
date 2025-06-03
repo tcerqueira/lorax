@@ -12,6 +12,7 @@ use crate::{
 pub struct ParsingError {
     pub span: Span,
     pub message: Box<str>,
+    pub should_sync: bool,
 }
 
 impl ParsingError {
@@ -19,6 +20,16 @@ impl ParsingError {
         Self {
             span: token.span.clone(),
             message: format!("{message}").into(),
+            should_sync: true,
+        }
+    }
+
+    #[expect(dead_code)]
+    pub fn custom_no_sync(token: &Token, message: impl Display) -> Self {
+        Self {
+            span: token.span.clone(),
+            message: format!("{message}").into(),
+            should_sync: false,
         }
     }
 
@@ -26,6 +37,7 @@ impl ParsingError {
         Self {
             span: found.span.clone(),
             message: format!("Expected '{}', found '{}'", expected, found.ty).into(),
+            should_sync: true,
         }
     }
 }

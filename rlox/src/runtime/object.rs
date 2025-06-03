@@ -1,12 +1,42 @@
 use std::{
     any::Any,
     cmp::Ordering,
-    fmt::{Debug, Display},
-    ops::{Add, Deref, DerefMut, Div, Mul, Neg, Not, Sub},
+    fmt::{self, Debug, Display, Formatter},
+    ops::{Add, Div, Mul, Neg, Not, Sub},
     rc::Rc,
 };
 
 use thiserror::Error;
+
+pub trait AnyExt {
+    fn type_name(&self) -> &'static str;
+}
+
+impl<T: Any + ?Sized> AnyExt for T {
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
+}
+
+pub trait ObjDebug {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result;
+}
+
+impl<T: Debug> ObjDebug for T {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+pub trait ObjDisplay {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result;
+}
+
+impl<T: Display> ObjDisplay for T {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
 
 pub trait Nil {
     fn is_nil(&self) -> bool;
@@ -38,10 +68,10 @@ impl<T: PartialOrd + Any> ObjPartialOrd for T {
     }
 }
 
-pub trait ObjectInner: Any + ObjPartialEq + ObjPartialOrd + Debug + Display {}
+pub trait ObjectInner: Any + AnyExt + ObjPartialEq + ObjPartialOrd + ObjDebug + ObjDisplay {}
 impl<T: Any + ObjPartialEq + ObjPartialOrd + Debug + Display> ObjectInner for T {}
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Object(Option<Rc<dyn ObjectInner>>);
 
 impl Object {
@@ -55,13 +85,13 @@ impl Object {
 
     #[allow(dead_code)]
     pub fn downcast<T: Any>(&self) -> &T {
-        (self.as_deref().unwrap() as &dyn Any)
+        (self.0.as_deref().unwrap() as &dyn Any)
             .downcast_ref::<T>()
             .unwrap()
     }
 
     pub fn try_downcast<T: Any>(&self) -> Result<&T, DowncastError<T>> {
-        match self.as_deref() {
+        match self.0.as_deref() {
             None => Err(DowncastError::new(true)),
             Some(obj) => (obj as &dyn Any)
                 .downcast_ref::<T>()
@@ -154,10 +184,40 @@ impl PartialEq for Object {
 impl PartialOrd for Object {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (&self.0, &other.0) {
-            (None, _) => None,
-            (_, None) => None,
+            (None, _) | (_, None) => None,
             (Some(this), Some(other)) => this.partial_cmp(other.as_ref()),
         }
+    }
+}
+
+impl Debug for Object {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Object {{ ")?;
+        match &self.0 {
+            None => write!(f, "type: <unknown>, value: nil")?,
+            Some(obj) => {
+                write!(f, "type: ")?;
+                write!(f, "{}", AnyExt::type_name(obj.as_ref()))?;
+                write!(f, ", value: ")?;
+                ObjDebug::fmt(obj.as_ref(), f)?;
+            }
+        }
+        write!(f, " }}")
+    }
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            None => write!(f, "nil"),
+            Some(obj) => ObjDisplay::fmt(obj.as_ref(), f),
+        }
+    }
+}
+
+impl Nil for Object {
+    fn is_nil(&self) -> bool {
+        self.0.is_nil()
     }
 }
 
@@ -198,34 +258,5 @@ impl<T> Display for DowncastError<T> {
             true => write!(f, "Object is nil"),
             false => write!(f, "Object is not of type {}", std::any::type_name::<T>()),
         }
-    }
-}
-
-impl Display for Object {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.is_nil() {
-            true => writeln!(f, "nil"),
-            false => writeln!(f, "{}", self.as_deref().unwrap()),
-        }
-    }
-}
-
-impl Nil for Object {
-    fn is_nil(&self) -> bool {
-        self.0.is_nil()
-    }
-}
-
-impl Deref for Object {
-    type Target = Option<Rc<dyn ObjectInner>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for Object {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }

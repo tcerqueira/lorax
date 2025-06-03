@@ -64,7 +64,8 @@ macro_rules! tt_pat {
 
 impl Parser {
     pub fn new(mut tokens: Vec<Token>) -> Self {
-        let eof = tokens.pop().expect("always have EOF token"); // None means EOF and we keep the token for reporting
+        // None means EOF and we keep the token for reporting
+        let eof = tokens.pop().expect("always have EOF token");
         Self {
             tokens: tokens.into(),
             eof,
@@ -78,7 +79,9 @@ impl Parser {
             match self.declaration() {
                 Ok(stmt) => stmts.push(stmt),
                 Err(err) => {
-                    self.synchronize();
+                    if err.should_sync {
+                        self.synchronize();
+                    }
                     errs.push(err);
                 }
             };

@@ -109,7 +109,7 @@ impl StmtVisitor for Interpreter {
 
     fn visit_print(&mut self, stmt: &StmtPrint) -> Self::T {
         let value = self.evaluate(&stmt.expr)?;
-        print!("{value}");
+        println!("{value}");
         Ok(())
     }
 
