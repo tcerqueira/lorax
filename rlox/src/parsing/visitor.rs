@@ -4,6 +4,7 @@ pub trait ExprVisitor {
     type T;
 
     fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T;
+    fn visit_call(&mut self, expr: &ExprCall) -> Self::T;
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T;
     fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T;
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T;

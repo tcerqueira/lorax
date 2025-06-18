@@ -68,14 +68,17 @@ impl<T: PartialOrd + Any> ObjPartialOrd for T {
     }
 }
 
-pub trait ObjectInner: Any + AnyExt + ObjPartialEq + ObjPartialOrd + ObjDebug + ObjDisplay {}
-impl<T: Any + ObjPartialEq + ObjPartialOrd + Debug + Display> ObjectInner for T {}
+pub trait ObjectInternal:
+    Any + AnyExt + ObjPartialEq + ObjPartialOrd + ObjDebug + ObjDisplay
+{
+}
+impl<T: Any + AnyExt + ObjPartialEq + ObjPartialOrd + ObjDebug + ObjDisplay> ObjectInternal for T {}
 
 #[derive(Clone)]
-pub struct Object(Option<Rc<dyn ObjectInner>>);
+pub struct Object(Option<Rc<dyn ObjectInternal>>);
 
 impl Object {
-    pub fn new(value: impl ObjectInner) -> Self {
+    pub fn new(value: impl ObjectInternal) -> Self {
         Self(Some(Rc::new(value)))
     }
 

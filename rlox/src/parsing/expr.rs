@@ -6,6 +6,7 @@ use crate::{report::Span, runtime::object::Object, tokens::Token};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Binary(ExprBinary),
+    Call(ExprCall),
     Grouping(ExprGrouping),
     Literal(ExprLiteral),
     Unary(ExprUnary),
@@ -19,6 +20,13 @@ pub struct ExprBinary {
     pub op: Token,
     pub left: Box<Expr>,
     pub right: Box<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprCall {
+    pub callee: Box<Expr>,
+    pub r_paren: Token,
+    pub args: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +72,7 @@ impl Expr {
     pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
         match self {
             Expr::Binary(e) => visitor.visit_binary(e),
+            Expr::Call(e) => visitor.visit_call(e),
             Expr::Grouping(e) => visitor.visit_grouping(e),
             Expr::Literal(e) => visitor.visit_literal(e),
             Expr::Unary(e) => visitor.visit_unary(e),
@@ -77,6 +86,7 @@ impl Expr {
     pub fn span(&self) -> Span {
         match self {
             Expr::Binary(e) => e.left.span().join(&e.right.span()),
+            Expr::Call(e) => e.callee.span().join(&e.r_paren.span),
             Expr::Grouping(e) => e.0.span(),
             Expr::Literal(e) => e.token.span.clone(),
             Expr::Unary(e) => e.op.span.join(&e.right.span()),
@@ -116,6 +126,19 @@ impl ExprVisitor for StdPrinter<'_, '_> {
         expr.left.accept(self)?;
         write!(self.fmt, " {} ", expr.op.ty)?;
         expr.right.accept(self)
+    }
+
+    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
+        expr.callee.accept(self)?;
+        write!(self.fmt, "(")?;
+        let mut iter = expr.args.iter().peekable();
+        while let Some(arg) = iter.next() {
+            arg.accept(self)?;
+            if iter.peek().is_some() {
+                write!(self.fmt, ", ")?;
+            }
+        }
+        write!(self.fmt, ")")
     }
 
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
@@ -164,6 +187,22 @@ impl ExprVisitor for AstPrinter<'_, '_> {
         write!(self.fmt, ")")
     }
 
+    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
+        write!(self.fmt, "(call ")?;
+        expr.callee.accept(self)?;
+        if !expr.args.is_empty() {
+            write!(self.fmt, " ")?;
+        }
+        let mut iter = expr.args.iter().peekable();
+        while let Some(arg) = iter.next() {
+            arg.accept(self)?;
+            if iter.peek().is_some() {
+                write!(self.fmt, ", ")?;
+            }
+        }
+        write!(self.fmt, ")")
+    }
+
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
         write!(self.fmt, "(group ")?;
         expr.0.accept(self)?;
@@ -208,6 +247,12 @@ impl From<ExprBinary> for Expr {
 impl From<ExprUnary> for Expr {
     fn from(value: ExprUnary) -> Self {
         Self::Unary(value)
+    }
+}
+
+impl From<ExprCall> for Expr {
+    fn from(value: ExprCall) -> Self {
+        Self::Call(value)
     }
 }
 

@@ -57,6 +57,10 @@ impl ExprVisitor for Interpreter {
         Ok(value)
     }
 
+    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
+        todo!()
+    }
+
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
         self.evaluate(&expr.0)
     }

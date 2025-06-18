@@ -33,7 +33,9 @@ use crate::{runtime::object::Object, tokens::*};
 // term             => factor ( ("-" | "+") factor )* ;
 // factor           => unary ( ("/" | "*") unary )* ;
 // unary            => ("!" | "-") unary
-//                  | primary ;
+//                  | call ;
+// call             => primary ( "(" arguments? ")" )* ;
+// arguments        => expression ( "," expression )* ;
 //
 // primary          => NUMBER | STRING
 //                  | "true" | "false" | "nil"
@@ -353,9 +355,48 @@ impl Parser {
                 right: Box::new(self.unary()?),
             }
             .into(),
-            None => self.primary()?,
+            None => self.call()?,
         };
         Ok(expr)
+    }
+
+    fn call(&mut self) -> Result<Expr, ParsingError> {
+        let mut expr = self.primary()?;
+        while self.matches(TokenType::LeftParen).is_some() {
+            let args = self.arguments()?;
+            let r_paren = self.consume(TokenType::RightParen)?;
+
+            expr = ExprCall {
+                callee: Box::new(expr),
+                r_paren,
+                args,
+            }
+            .into();
+        }
+        Ok(expr)
+    }
+
+    fn arguments(&mut self) -> Result<Vec<Expr>, ParsingError> {
+        let mut args = Vec::new();
+        if let Some(TokenType::RightParen) | None = self.peek_type() {
+            return Ok(args);
+        }
+
+        loop {
+            args.push(self.expression()?);
+            if args.len() > 255 {
+                return Err(ParsingError::custom(
+                    self.peek().unwrap_or(&self.eof),
+                    "Can't have more than 255 arguments.",
+                ));
+            }
+
+            if self.matches(TokenType::Comma).is_none() {
+                break;
+            }
+        }
+
+        Ok(args)
     }
 
     fn primary(&mut self) -> Result<Expr, ParsingError> {
@@ -526,6 +567,19 @@ mod tests {
         let expr = Parser::new(tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(! (- 42))");
+    }
+
+    #[test]
+    fn parse_call() {
+        let src = "-fn_name(2, \"wtv\")()";
+        let tokens = Scanner::new(src).scan_tokens().unwrap();
+
+        let expr = Parser::new(tokens).expression().unwrap();
+
+        assert_eq!(
+            expr.polish_notation(),
+            "(- (call (call fn_name 2, \"wtv\")))"
+        );
     }
 
     #[test]
