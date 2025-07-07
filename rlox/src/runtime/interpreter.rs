@@ -6,7 +6,10 @@ use crate::{
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
     },
-    runtime::error::RuntimeError,
+    runtime::{
+        callable::{CallError, Callable},
+        error::RuntimeError,
+    },
     tokens::TokenType,
 };
 
@@ -58,7 +61,24 @@ impl ExprVisitor for Interpreter {
     }
 
     fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
-        todo!()
+        let callee = self.evaluate(&expr.callee)?;
+        let args = expr
+            .args
+            .iter()
+            .map(|arg| self.evaluate(arg))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let callable = callee
+            .try_downcast::<Callable>()
+            .map_err(|_| CallError::not_callable(expr.callee.span()))?;
+
+        if callable.arity() as usize != args.len() {
+            return Err(CallError::arity(expr.callee.span(), callable.arity(), args.len()).into());
+        }
+
+        let result = callable.call(self, args)?;
+
+        Ok(result)
     }
 
     fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
@@ -100,9 +120,8 @@ impl ExprVisitor for Interpreter {
         match (&expr.op.ty, left.is_truthy()) {
             (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
             (TokenType::Or, false) | (TokenType::And, true) => self.evaluate(&expr.right),
-            (invalid_token, _) => panic!(
-                "parsing gone wrong, token of a logical expression cannot be '{}'",
-                invalid_token
+            (invalid_token, _) => unreachable!(
+                "parsing gone wrong, token of a logical expression cannot be '{invalid_token}'"
             ),
         }
     }

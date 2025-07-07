@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::{
     lexing::tokens::Token,
     report::{Report, span::Span},
+    runtime::callable::CallError,
 };
 
 #[derive(Debug, Error)]
@@ -37,5 +38,14 @@ impl Report for RuntimeError {
 
     fn span(&self) -> &Span {
         &self.span
+    }
+}
+
+impl From<CallError> for RuntimeError {
+    fn from(err: CallError) -> Self {
+        Self {
+            span: err.span().clone(),
+            message: err.to_string().into_boxed_str(),
+        }
     }
 }

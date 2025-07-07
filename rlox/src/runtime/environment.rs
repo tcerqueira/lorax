@@ -5,35 +5,39 @@ use thiserror::Error;
 use super::object::Object;
 
 pub struct Environment {
-    chain: VecDeque<ScopedEnvironment>,
+    stack: VecDeque<ScopedEnvironment>,
 }
 
 impl Environment {
     pub fn new() -> Self {
-        let mut chain = VecDeque::new();
+        let mut stack = VecDeque::new();
         // global scope
-        chain.push_front(ScopedEnvironment::new());
-        Self { chain }
+        stack.push_front(ScopedEnvironment::new());
+        Self { stack }
     }
 
     pub fn push_scope(&mut self) {
-        self.chain.push_front(ScopedEnvironment::new());
+        self.stack.push_front(ScopedEnvironment::new());
     }
 
     pub fn pop_scope(&mut self) {
-        self.chain.pop_front();
+        self.stack.pop_front();
     }
 
     pub fn define(&mut self, name: Box<str>, object: Object) {
         self.current_scope().define(name, object)
     }
 
+    pub fn define_global(&mut self, name: Box<str>, object: Object) {
+        self.global_scope().define(name, object)
+    }
+
     pub fn get(&self, name: &str) -> Option<Object> {
-        self.chain.iter().find_map(|s| s.get(name))
+        self.stack.iter().find_map(|s| s.get(name))
     }
 
     pub fn assign(&mut self, name: &str, object: Object) -> Result<Object, EnvError> {
-        self.chain
+        self.stack
             .iter_mut()
             // PERF: garbage clone
             .find_map(|s| s.assign(name, object.clone()))
@@ -41,8 +45,14 @@ impl Environment {
     }
 
     fn current_scope(&mut self) -> &mut ScopedEnvironment {
-        self.chain
-            .get_mut(0)
+        self.stack
+            .front_mut()
+            .expect("must have at least the global scope")
+    }
+
+    fn global_scope(&mut self) -> &mut ScopedEnvironment {
+        self.stack
+            .back_mut()
             .expect("must have at least the global scope")
     }
 }
