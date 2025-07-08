@@ -19,9 +19,12 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
+        let mut this = Self {
             env: Environment::new(),
-        }
+        };
+        this.define_builtins();
+
+        this
     }
 
     pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
@@ -31,6 +34,24 @@ impl Interpreter {
         }
         self.env.pop_scope();
         Ok(())
+    }
+
+    fn define_builtins(&mut self) {
+        self.env.define_global(
+            "clock".into(),
+            Object::new(Callable {
+                name: Some("clock"),
+                arity: 0,
+                func: Box::new(|_interpreter, _args| {
+                    Ok(Object::new(
+                        std::time::UNIX_EPOCH
+                            .elapsed()
+                            .expect("couldn't get system time")
+                            .as_millis(),
+                    ))
+                }),
+            }),
+        );
     }
 }
 
@@ -77,7 +98,6 @@ impl ExprVisitor for Interpreter {
         }
 
         let result = callable.call(self, args)?;
-
         Ok(result)
     }
 
