@@ -8,6 +8,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::runtime::callable::{Function, NativeFunction, ObjCallable};
+
 pub trait AnyExt {
     fn type_name(&self) -> &'static str;
 }
@@ -107,6 +109,16 @@ impl Object {
             Ok(boolean) => *boolean,
             Err(e) if e.is_nil() => false,
             Err(_) => true,
+        }
+    }
+
+    pub fn as_callable(&self) -> Option<&dyn ObjCallable> {
+        if let Ok(callable) = self.try_downcast::<Function>() {
+            Some(callable as &dyn ObjCallable)
+        } else if let Ok(callable) = self.try_downcast::<NativeFunction>() {
+            Some(callable as &dyn ObjCallable)
+        } else {
+            None
         }
     }
 }

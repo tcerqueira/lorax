@@ -4,8 +4,7 @@ use thiserror::Error;
 
 use crate::{
     lexing::tokens::Token,
-    report::{Report, span::Span},
-    runtime::callable::CallError,
+    report::{Report, Spanned, span::Span},
 };
 
 #[derive(Debug, Error)]
@@ -29,23 +28,30 @@ impl RuntimeError {
             message: "Undefined variable.".into(),
         }
     }
+
+    pub fn not_callable(span: Span) -> Self {
+        Self {
+            span,
+            message: "Object is not a callable.".into(),
+        }
+    }
+
+    pub fn arity(span: Span, expected: u8, found: usize) -> Self {
+        Self {
+            span,
+            message: format!("Expected {expected} arguments but found {found}").into(),
+        }
+    }
 }
 
 impl Report for RuntimeError {
     fn report(&self, _source: &str) {
         eprint!("{}", self.message);
     }
-
-    fn span(&self) -> &Span {
-        &self.span
-    }
 }
 
-impl From<CallError> for RuntimeError {
-    fn from(err: CallError) -> Self {
-        Self {
-            span: err.span().clone(),
-            message: err.to_string().into_boxed_str(),
-        }
+impl Spanned for RuntimeError {
+    fn span(&self) -> Span {
+        self.span.clone()
     }
 }

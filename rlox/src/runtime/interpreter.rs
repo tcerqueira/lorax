@@ -1,3 +1,8 @@
+use std::{
+    collections::VecDeque,
+    ops::{Deref, DerefMut},
+};
+
 use super::{environment::*, object::*};
 
 use crate::{
@@ -6,51 +11,83 @@ use crate::{
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
     },
+    report::{Span, Spanned},
     runtime::{
-        callable::{CallError, Callable},
+        callable::{Function, NativeFunction},
         error::RuntimeError,
     },
     tokens::TokenType,
 };
 
 pub struct Interpreter {
-    env: Environment,
+    pub(super) env: Environment,
+    pub(super) span_stack: VecDeque<Span>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         let mut this = Self {
             env: Environment::new(),
+            span_stack: vec![Span::default()].into(),
         };
         this.define_builtins();
 
         this
     }
 
-    pub fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
-        self.env.push_scope();
-        for stmt in statements {
-            self.execute(stmt).inspect_err(|_| self.env.pop_scope())?;
+    pub fn interpret(&mut self, program: Vec<Stmt>) -> Result<(), RuntimeError> {
+        for statement in program {
+            self.execute(&statement)?;
         }
-        self.env.pop_scope();
         Ok(())
+    }
+
+    fn evaluate(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
+        let mut this = self.new_span(expr.span());
+        expr.accept(&mut *this)
+    }
+
+    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+        stmt.accept(self)
+    }
+
+    pub(super) fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+        for stmt in statements {
+            self.execute(stmt)?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn new_env(&mut self) -> InterpreterScope<'_, impl FnMut(&mut Interpreter)> {
+        self.env.push_scope();
+        InterpreterScope::new(self, |i| i.env.pop_scope())
+    }
+
+    pub(super) fn new_span(
+        &mut self,
+        span: Span,
+    ) -> InterpreterScope<'_, impl FnMut(&mut Interpreter)> {
+        self.span_stack.push_front(span);
+        InterpreterScope::new(self, |i| {
+            i.span_stack.pop_front();
+        })
+    }
+
+    pub(super) fn current_span(&self) -> &Span {
+        self.span_stack.front().expect("there's always root span")
     }
 
     fn define_builtins(&mut self) {
         self.env.define_global(
             "clock".into(),
-            Object::new(Callable {
-                name: Some("clock"),
-                arity: 0,
-                func: Box::new(|_interpreter, _args| {
-                    Ok(Object::new(
-                        std::time::UNIX_EPOCH
-                            .elapsed()
-                            .expect("couldn't get system time")
-                            .as_millis(),
-                    ))
-                }),
-            }),
+            Object::new(NativeFunction::new("clock", 0, |_interpreter, _args| {
+                Ok(Object::new(
+                    std::time::UNIX_EPOCH
+                        .elapsed()
+                        .expect("couldn't get system time")
+                        .as_millis(),
+                ))
+            })),
         );
     }
 }
@@ -82,22 +119,27 @@ impl ExprVisitor for Interpreter {
     }
 
     fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
-        let callee = self.evaluate(&expr.callee)?;
+        let mut this = self.new_span(expr.callee.span());
+        let callee = this.evaluate(&expr.callee)?;
         let args = expr
             .args
             .iter()
-            .map(|arg| self.evaluate(arg))
+            .map(|arg| this.evaluate(arg))
             .collect::<Result<Vec<_>, _>>()?;
 
         let callable = callee
-            .try_downcast::<Callable>()
-            .map_err(|_| CallError::not_callable(expr.callee.span()))?;
+            .as_callable()
+            .ok_or_else(|| RuntimeError::not_callable(this.current_span().clone()))?;
 
         if callable.arity() as usize != args.len() {
-            return Err(CallError::arity(expr.callee.span(), callable.arity(), args.len()).into());
+            return Err(RuntimeError::arity(
+                this.current_span().clone(),
+                callable.arity(),
+                args.len(),
+            ));
         }
 
-        let result = callable.call(self, args)?;
+        let result = callable.call(&mut this, args)?;
         Ok(result)
     }
 
@@ -110,7 +152,8 @@ impl ExprVisitor for Interpreter {
     }
 
     fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
-        let right = self.evaluate(&expr.right)?;
+        let mut this = self.new_span(expr.span());
+        let right = this.evaluate(&expr.right)?;
         let value =
             match expr.op.ty {
                 TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
@@ -119,27 +162,30 @@ impl ExprVisitor for Interpreter {
                 TokenType::Bang => Object::new(!right.is_truthy()),
                 _ => panic!("Unexpected unary operator: {:?}", expr.op),
             };
+
         Ok(value)
     }
 
     fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
         self.env
             .get(expr.name.ty.ident())
-            .ok_or(RuntimeError::undefined(&expr.name))
+            .ok_or_else(|| RuntimeError::undefined(&expr.name))
     }
 
     fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
-        let value = self.evaluate(&expr.value)?;
-        self.env
+        let mut this = self.new_span(expr.span());
+        let value = this.evaluate(&expr.value)?;
+        this.env
             .assign(expr.name.ty.ident(), value)
             .map_err(|e| RuntimeError::custom(&expr.name, e))
     }
 
     fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
-        let left = self.evaluate(&expr.left)?;
+        let mut this = self.new_span(expr.span());
+        let left = this.evaluate(&expr.left)?;
         match (&expr.op.ty, left.is_truthy()) {
             (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
-            (TokenType::Or, false) | (TokenType::And, true) => self.evaluate(&expr.right),
+            (TokenType::Or, false) | (TokenType::And, true) => this.evaluate(&expr.right),
             (invalid_token, _) => unreachable!(
                 "parsing gone wrong, token of a logical expression cannot be '{invalid_token}'"
             ),
@@ -174,7 +220,8 @@ impl StmtVisitor for Interpreter {
     }
 
     fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T {
-        self.execute_block(&stmt.statements)
+        let mut scope = self.new_env();
+        scope.execute_block(&stmt.statements)
     }
 
     fn visit_if(&mut self, stmt: &StmtIf) -> Self::T {
@@ -193,22 +240,63 @@ impl StmtVisitor for Interpreter {
         }
         Ok(())
     }
-}
 
-impl Interpreter {
-    pub fn interpret(&mut self, program: Vec<Stmt>) -> Result<(), RuntimeError> {
-        for statement in program {
-            self.execute(&statement)?;
-        }
+    fn visit_function(&mut self, stmt: &StmtFunction) -> Self::T {
+        let stmt = stmt.clone();
+        self.env.define(
+            stmt.name.ty().ident().into(),
+            Object::new(Function::new(stmt)),
+        );
         Ok(())
     }
+}
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
-        expr.accept(self)
+pub struct InterpreterScope<'i, F>
+where
+    F: FnMut(&mut Interpreter),
+{
+    interpreter: &'i mut Interpreter,
+    drop_fn: F,
+}
+
+impl<'i, F> InterpreterScope<'i, F>
+where
+    F: FnMut(&mut Interpreter),
+{
+    pub fn new(interpreter: &'i mut Interpreter, drop_fn: F) -> Self {
+        Self {
+            interpreter,
+            drop_fn,
+        }
     }
+}
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
-        stmt.accept(self)
+impl<'i, F> Drop for InterpreterScope<'i, F>
+where
+    F: FnMut(&mut Interpreter),
+{
+    fn drop(&mut self) {
+        (self.drop_fn)(self.interpreter)
+    }
+}
+
+impl<'i, F> Deref for InterpreterScope<'i, F>
+where
+    F: FnMut(&mut Interpreter),
+{
+    type Target = Interpreter;
+
+    fn deref(&self) -> &Self::Target {
+        self.interpreter
+    }
+}
+
+impl<'i, F> DerefMut for InterpreterScope<'i, F>
+where
+    F: FnMut(&mut Interpreter),
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.interpreter
     }
 }
 

@@ -1,98 +1,142 @@
 use std::fmt::{Debug, Display};
 
-use thiserror::Error;
-
 use crate::{
-    report::{Report, Span},
-    runtime::{Interpreter, object::Object},
+    parsing::stmt::StmtFunction,
+    runtime::{Interpreter, error::RuntimeError, object::Object},
 };
 
-pub type CallableFn = Box<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object, CallError>>;
+pub trait ObjCallable {
+    fn arity(&self) -> u8;
 
-pub struct Callable {
-    pub name: Option<&'static str>,
-    pub arity: u8,
-    pub func: CallableFn,
-}
-
-impl Callable {
-    pub fn arity(&self) -> u8 {
-        self.arity
-    }
-
-    pub fn call(
+    fn call(
         &self,
         interpreter: &mut Interpreter,
         args: Vec<Object>,
-    ) -> Result<Object, CallError> {
+    ) -> Result<Object, RuntimeError>;
+}
+
+pub type CallableFn = Box<dyn Fn(&mut Interpreter, Vec<Object>) -> Result<Object, RuntimeError>>;
+
+pub struct NativeFunction {
+    name: &'static str,
+    arity: u8,
+    func: CallableFn,
+}
+
+impl NativeFunction {
+    pub fn new(
+        name: &'static str,
+        arity: u8,
+        f: impl Fn(&mut Interpreter, Vec<Object>) -> Result<Object, RuntimeError> + 'static,
+    ) -> Self {
+        Self {
+            name,
+            arity,
+            func: Box::new(f),
+        }
+    }
+}
+
+impl ObjCallable for NativeFunction {
+    fn arity(&self) -> u8 {
+        self.arity
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        args: Vec<Object>,
+    ) -> Result<Object, RuntimeError> {
         (self.func)(interpreter, args)
     }
 }
 
-impl Debug for Callable {
+pub struct Function {
+    decl: StmtFunction,
+}
+
+impl Function {
+    pub fn new(decl: StmtFunction) -> Self {
+        Self { decl }
+    }
+
+    pub fn name(&self) -> &str {
+        self.decl.name.ty().ident()
+    }
+}
+
+impl ObjCallable for Function {
+    fn arity(&self) -> u8 {
+        self.decl
+            .params
+            .len()
+            .try_into()
+            .expect("arity always < 256")
+    }
+
+    fn call(
+        &self,
+        interpreter: &mut Interpreter,
+        args: Vec<Object>,
+    ) -> Result<Object, RuntimeError> {
+        let mut interpreter = interpreter.new_env();
+        std::iter::zip(&self.decl.params, args)
+            .for_each(|(param, arg)| interpreter.env.define(param.ty().ident().into(), arg));
+        interpreter.execute_block(&self.decl.body)?;
+        Ok(Object::nil())
+    }
+}
+
+impl Debug for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Callable")
+        f.debug_struct("NativeFunction")
             .field("name", &self.name)
             .field("arity", &self.arity)
             .finish_non_exhaustive()
     }
 }
 
-impl Display for Callable {
+impl Display for NativeFunction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "fun {}", self.name.unwrap_or("<anonymous>"))
+        write!(f, "<native fn {}>", self.name)
     }
 }
 
-impl PartialEq for Callable {
+impl PartialEq for NativeFunction {
     fn eq(&self, other: &Self) -> bool {
         std::ptr::eq(self.func.as_ref(), other.func.as_ref())
     }
 }
 
-impl PartialOrd for Callable {
+impl PartialOrd for NativeFunction {
     fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
         None
     }
 }
 
-#[derive(Debug, Error)]
-#[error("[line {}:{}] {}", .span.line_start, .span.start, kind)]
-pub struct CallError {
-    span: Span,
-    kind: CallErrorKind,
-}
-
-#[derive(Debug, Error)]
-pub enum CallErrorKind {
-    #[error("Expected {expected} arguments but found {found}")]
-    Arity { expected: u8, found: usize },
-    #[error("Object is not a callable")]
-    NotCallable,
-}
-
-impl CallError {
-    pub fn arity(span: Span, expected: u8, found: usize) -> Self {
-        Self {
-            span,
-            kind: CallErrorKind::Arity { expected, found },
-        }
-    }
-
-    pub fn not_callable(span: Span) -> Self {
-        Self {
-            span,
-            kind: CallErrorKind::NotCallable,
-        }
+impl Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Function")
+            .field("name", &self.name())
+            .field("arity", &self.arity())
+            .finish_non_exhaustive()
     }
 }
 
-impl Report for CallError {
-    fn report(&self, _source: &str) {
-        eprint!("{}", self.kind);
+impl Display for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<fn {}>", self.name())
     }
+}
 
-    fn span(&self) -> &Span {
-        &self.span
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        self.decl.name == other.decl.name
+    }
+}
+
+impl PartialOrd for Function {
+    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+        None
     }
 }

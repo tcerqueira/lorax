@@ -1,8 +1,7 @@
-use super::Span;
+use crate::report::Spanned;
 
-pub trait Report {
+pub trait Report: Spanned {
     fn report(&self, source: &str);
-    fn span(&self) -> &Span;
 }
 
 pub struct Reporter<'s> {

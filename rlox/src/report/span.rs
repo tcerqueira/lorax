@@ -1,5 +1,8 @@
 #![allow(dead_code)]
-// TODO: add Span construct for better reporting
+
+pub trait Spanned {
+    fn span(&self) -> Span;
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
@@ -21,6 +24,12 @@ impl Span {
 
     pub fn slice<'s>(&self, s: &'s str) -> &'s str {
         &s[self.start..self.end]
+    }
+}
+
+impl Spanned for Span {
+    fn span(&self) -> Span {
+        self.clone()
     }
 }
 

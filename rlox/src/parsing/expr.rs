@@ -1,7 +1,11 @@
 use std::fmt::{self, Debug, Display};
 
 use super::visitor::ExprVisitor;
-use crate::{report::Span, runtime::object::Object, tokens::Token};
+use crate::{
+    report::{Span, Spanned},
+    runtime::object::Object,
+    tokens::Token,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -82,20 +86,6 @@ impl Expr {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn span(&self) -> Span {
-        match self {
-            Expr::Binary(e) => e.left.span().join(&e.right.span()),
-            Expr::Call(e) => e.callee.span().join(&e.r_paren.span),
-            Expr::Grouping(e) => e.0.span(),
-            Expr::Literal(e) => e.token.span.clone(),
-            Expr::Unary(e) => e.op.span.join(&e.right.span()),
-            Expr::Variable(e) => e.name.span.clone(),
-            Expr::Assign(e) => e.name.span.join(&e.value.span()),
-            Expr::Logical(e) => e.left.span().join(&e.right.span()),
-        }
-    }
-
     #[cfg(test)]
     pub fn polish_notation(&self) -> String {
         struct PolishNotation<'a>(&'a Expr);
@@ -106,6 +96,21 @@ impl Expr {
         }
 
         PolishNotation(self).to_string()
+    }
+}
+
+impl Spanned for Expr {
+    fn span(&self) -> Span {
+        match self {
+            Expr::Binary(e) => e.span(),
+            Expr::Call(e) => e.span(),
+            Expr::Grouping(e) => e.span(),
+            Expr::Literal(e) => e.span(),
+            Expr::Unary(e) => e.span(),
+            Expr::Variable(e) => e.span(),
+            Expr::Assign(e) => e.span(),
+            Expr::Logical(e) => e.span(),
+        }
     }
 }
 
@@ -235,6 +240,54 @@ impl ExprVisitor for AstPrinter<'_, '_> {
         write!(self.fmt, " ")?;
         expr.right.accept(self)?;
         write!(self.fmt, ")")
+    }
+}
+
+impl Spanned for ExprBinary {
+    fn span(&self) -> Span {
+        self.left.span().join(&self.right.span())
+    }
+}
+
+impl Spanned for ExprUnary {
+    fn span(&self) -> Span {
+        self.op.span.join(&self.right.span())
+    }
+}
+
+impl Spanned for ExprCall {
+    fn span(&self) -> Span {
+        self.callee.span().join(&self.r_paren.span)
+    }
+}
+
+impl Spanned for ExprGrouping {
+    fn span(&self) -> Span {
+        self.0.span()
+    }
+}
+
+impl Spanned for ExprLiteral {
+    fn span(&self) -> Span {
+        self.token.span.clone()
+    }
+}
+
+impl Spanned for ExprVariable {
+    fn span(&self) -> Span {
+        self.name.span.clone()
+    }
+}
+
+impl Spanned for ExprAssign {
+    fn span(&self) -> Span {
+        self.name.span.join(&self.value.span())
+    }
+}
+
+impl Spanned for ExprLogical {
+    fn span(&self) -> Span {
+        self.left.span().join(&self.right.span())
     }
 }
 

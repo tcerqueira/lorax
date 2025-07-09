@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::{
     lexing::tokens::Token,
-    report::{Report, Span},
+    report::{Report, Span, Spanned},
 };
 
 #[derive(Debug, Error)]
@@ -18,7 +18,7 @@ pub struct ParsingError {
 impl ParsingError {
     pub fn custom(token: &Token, message: impl Display) -> Self {
         Self {
-            span: token.span.clone(),
+            span: token.span().clone(),
             message: format!("{message}").into(),
             should_sync: true,
         }
@@ -27,7 +27,7 @@ impl ParsingError {
     #[expect(dead_code)]
     pub fn custom_no_sync(token: &Token, message: impl Display) -> Self {
         Self {
-            span: token.span.clone(),
+            span: token.span().clone(),
             message: format!("{message}").into(),
             should_sync: false,
         }
@@ -35,7 +35,7 @@ impl ParsingError {
 
     pub fn expected(expected: impl Display, found: &Token) -> Self {
         Self {
-            span: found.span.clone(),
+            span: found.span().clone(),
             message: format!("Expected '{}', found '{}'", expected, found.ty).into(),
             should_sync: true,
         }
@@ -46,8 +46,10 @@ impl Report for ParsingError {
     fn report(&self, _source: &str) {
         eprint!("{}", self.message);
     }
+}
 
-    fn span(&self) -> &Span {
-        &self.span
+impl Spanned for ParsingError {
+    fn span(&self) -> Span {
+        self.span.clone()
     }
 }

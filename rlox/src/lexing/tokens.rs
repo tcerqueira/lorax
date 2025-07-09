@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::report::Span;
+use crate::report::{Span, Spanned};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -68,6 +68,12 @@ pub struct Token {
 impl Token {
     pub fn ty(&self) -> &TokenType {
         &self.ty
+    }
+}
+
+impl Spanned for Token {
+    fn span(&self) -> Span {
+        self.span.clone()
     }
 }
 

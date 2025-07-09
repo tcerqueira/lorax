@@ -1,0 +1,28 @@
+print clock();
+
+fun add(a, b, c) {
+    print a + b + c;
+}
+add(1, 2 , 3);
+print add;
+
+fun count(n) {
+    if (n > 1) count(n - 1);
+    print n;
+}
+count(3);
+
+fun say_hi(first, last) {
+    print "Hi, " + first + " " + last + "!";
+}
+say_hi("Terry", "Davis");
+
+fun for_each(start, end, f) {
+    for (var i = start; i < end; i = i + 1) {
+        f(i);
+    }
+}
+fun print_number(x) {
+    print x;
+}
+for_each(0, 3, print_number);

@@ -1,9 +1,9 @@
 use thiserror::Error;
 
-use crate::report::{Report, Span};
+use crate::report::{Report, Span, Spanned};
 
 #[derive(Debug, Error)]
-#[error("[line {}:{}] {}", .span.line_start, .span.start, .message)]
+#[error("[line {}:{}] {}", (.span).line_start, .span.start, .message)]
 pub struct LexingError {
     pub span: Span,
     pub message: Box<str>,
@@ -19,8 +19,10 @@ impl Report for LexingError {
     fn report(&self, _source: &str) {
         eprint!("{}", self.message);
     }
+}
 
-    fn span(&self) -> &Span {
-        &self.span
+impl Spanned for LexingError {
+    fn span(&self) -> Span {
+        self.span.clone()
     }
 }

@@ -5,7 +5,7 @@ use crate::{runtime::object::Object, tokens::*};
 
 // program          => declaration* EOF ;
 //
-// declaration      => varDecl | statement ;
+// declaration      => funDecl | varDecl | statement ;
 // statement        => exprStmt
 //                  | ifStmt;
 //                  | printStmt
@@ -13,6 +13,10 @@ use crate::{runtime::object::Object, tokens::*};
 //                  | forStmt
 //                  | block ;
 // block            => "{" declaration* "}" ;
+//
+// funDecl          => "fun" function ;
+// function         => IDENTIFIER "(" parameters? ")" block ;
+// parameters       => IDENTIFIER ( "," IDENTIFIER )* ;
 //
 // varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
 // exprStmt         => expression ";" ;
@@ -97,9 +101,41 @@ impl Parser {
 
     fn declaration(&mut self) -> Result<Stmt, ParsingError> {
         match self.peek_type() {
+            Some(TokenType::Fun) => self.function(),
             Some(TokenType::Var) => self.var_decl(),
             _ => self.statement(),
         }
+    }
+
+    fn function(&mut self) -> Result<Stmt, ParsingError> {
+        self.consume(TokenType::Fun)?;
+        let name = self.consume_with(|t| matches!(t, TokenType::Identifier(_)), "function name")?;
+
+        self.consume(TokenType::LeftParen)?;
+        let params = self.parameters()?;
+        self.consume(TokenType::RightParen)?;
+
+        let body = self.block()?;
+
+        Ok(StmtFunction { name, params, body }.into())
+    }
+
+    fn parameters(&mut self) -> Result<Vec<Token>, ParsingError> {
+        if let Some(TokenType::RightParen) | None = self.peek_type() {
+            return Ok(Vec::new());
+        }
+
+        let args = self.comma_separated(|this| {
+            this.consume_with(|t| matches!(t, TokenType::Identifier(_)), "parameter name")
+        })?;
+        if args.len() > 255 {
+            return Err(ParsingError::custom(
+                self.peek().unwrap_or(&self.eof),
+                "Can't have more than 255 parameters.",
+            ));
+        }
+
+        Ok(args)
     }
 
     fn var_decl(&mut self) -> Result<Stmt, ParsingError> {
@@ -377,23 +413,16 @@ impl Parser {
     }
 
     fn arguments(&mut self) -> Result<Vec<Expr>, ParsingError> {
-        let mut args = Vec::new();
         if let Some(TokenType::RightParen) | None = self.peek_type() {
-            return Ok(args);
+            return Ok(Vec::new());
         }
 
-        loop {
-            args.push(self.expression()?);
-            if args.len() > 255 {
-                return Err(ParsingError::custom(
-                    self.peek().unwrap_or(&self.eof),
-                    "Can't have more than 255 arguments.",
-                ));
-            }
-
-            if self.matches(TokenType::Comma).is_none() {
-                break;
-            }
+        let args = self.comma_separated(Self::expression)?;
+        if args.len() > 255 {
+            return Err(ParsingError::custom(
+                self.peek().unwrap_or(&self.eof),
+                "Can't have more than 255 arguments.",
+            ));
         }
 
         Ok(args)
@@ -448,6 +477,21 @@ impl Parser {
         }
     }
 
+    fn comma_separated<T>(
+        &mut self,
+        mut parse_fn: impl FnMut(&mut Parser) -> Result<T, ParsingError>,
+    ) -> Result<Vec<T>, ParsingError> {
+        let mut args = Vec::new();
+        loop {
+            args.push(parse_fn(self)?);
+
+            if self.matches(TokenType::Comma).is_none() {
+                break;
+            }
+        }
+        Ok(args)
+    }
+
     fn matches(&mut self, patterns: TokenType) -> Option<Token> {
         match self.peek() {
             Some(tok) if patterns == tok.ty => {
@@ -483,12 +527,12 @@ impl Parser {
     fn consume_with(
         &mut self,
         pattern_fn: impl FnOnce(&TokenType) -> bool,
-        expected_msg: impl Display,
+        expected_item: impl Display,
     ) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern_fn(&tok.ty) => Ok(tok),
-            Some(tok) => Err(ParsingError::expected(expected_msg, &tok)),
-            None => Err(ParsingError::expected(expected_msg, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(expected_item, &tok)),
+            None => Err(ParsingError::expected(expected_item, &self.eof)),
         }
     }
 
