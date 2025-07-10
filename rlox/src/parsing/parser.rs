@@ -29,9 +29,9 @@ use crate::{runtime::object::Object, tokens::*};
 //                  ( "else" statement )? ;
 //
 // expression       => assignment ;
-// assignment       => IDENTIFIER "=" assignment | logic_or ;
-// logic_or         => logic_and ( "or" logic_and )*
-// logic_and        => equality ( "and" equality )*
+// assignment       => IDENTIFIER "=" assignment | logicOr ;
+// logicOr         => logicAnd ( "or" logicAnd )*
+// logicAnd        => equality ( "and" equality )*
 // equality         => comparison ( ("!=" | "==") comparison )* ;
 // comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
 // term             => factor ( ("-" | "+") factor )* ;
