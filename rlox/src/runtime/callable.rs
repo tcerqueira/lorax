@@ -5,7 +5,7 @@ use crate::{
         ast::{AstArena, AstRef, StmtId},
         stmt::StmtFunction,
     },
-    runtime::{Interpreter, error::RuntimeError, object::Object},
+    runtime::{Interpreter, control_flow::ControlFlow, error::RuntimeError, object::Object},
 };
 
 pub trait ObjCallable {
@@ -88,10 +88,19 @@ impl ObjCallable for Function {
     ) -> Result<Object, RuntimeError> {
         let mut interpreter = interpreter.new_env();
         let decl = arena.stmt_ref(self.decl).cast::<StmtFunction>();
-        std::iter::zip(&decl.params, args)
-            .for_each(|(param, arg)| interpreter.env.define(param.ty().ident().into(), arg));
-        interpreter.execute_block(decl.body.iter().map(|&s| arena.stmt_ref(s)))?;
-        Ok(Object::nil())
+
+        for (param, arg) in std::iter::zip(&decl.params, args) {
+            interpreter.env.define(param.ty().ident().into(), arg);
+        }
+        match interpreter.execute_block(decl.body.iter().map(|&s| arena.stmt_ref(s))) {
+            Ok(_) => Ok(Object::nil()),
+            Err(ControlFlow::Return(object)) => Ok(object),
+            Err(ControlFlow::Error(err)) => Err(err),
+            Err(control_flow) => Err(RuntimeError::invalid_break_or_continue(
+                interpreter.current_span(),
+                control_flow,
+            )),
+        }
     }
 }
 

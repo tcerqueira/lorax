@@ -15,6 +15,7 @@ use crate::{
     report::{Span, Spanned},
     runtime::{
         callable::{Function, NativeFunction},
+        control_flow::ControlFlow,
         error::RuntimeError,
     },
     tokens::TokenType,
@@ -42,7 +43,19 @@ impl Interpreter {
         ast_arena: &AstArena,
     ) -> Result<(), RuntimeError> {
         for statement in program.iter().map(|&s| ast_arena.stmt_ref(s)) {
-            self.execute(statement)?;
+            match self.execute(statement) {
+                Ok(()) => {}
+                Err(cf @ (ControlFlow::Break | ControlFlow::Continue)) => {
+                    return Err(RuntimeError::invalid_break_or_continue(
+                        self.current_span(),
+                        cf,
+                    ));
+                }
+                Err(ControlFlow::Return(_)) => {
+                    return Err(RuntimeError::invalid_return(self.current_span()));
+                }
+                Err(ControlFlow::Error(runtime)) => return Err(runtime),
+            }
         }
         Ok(())
     }
@@ -52,14 +65,14 @@ impl Interpreter {
         expr.accept(&mut *this)
     }
 
-    fn execute(&mut self, stmt: StmtRef) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: StmtRef) -> Result<(), ControlFlow> {
         stmt.accept(self)
     }
 
     pub(super) fn execute_block<'a>(
         &mut self,
         statements: impl IntoIterator<Item = StmtRef<'a>>,
-    ) -> Result<(), RuntimeError> {
+    ) -> Result<(), ControlFlow> {
         for stmt in statements {
             self.execute(stmt)?;
         }
@@ -107,7 +120,7 @@ impl ExprVisitor for &mut Interpreter {
         let arena = expr.arena();
         let left = self.evaluate(arena.expr_ref(expr.left))?;
         let right = self.evaluate(arena.expr_ref(expr.right))?;
-        let err_handler = |e| RuntimeError::custom(&expr.op, e);
+        let err_handler = |e| RuntimeError::with_token(&expr.op, e);
 
         let value = match expr.op.ty {
             TokenType::Plus => (left + right).map_err(err_handler)?,
@@ -167,14 +180,13 @@ impl ExprVisitor for &mut Interpreter {
         let arena = expr.arena();
         let mut this = self.new_span(expr.span());
         let right = this.evaluate(arena.expr_ref(expr.right))?;
-        let value =
-            match expr.op.ty {
-                TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
-                    RuntimeError::custom(&expr.op, format!("Invalid operand: {e}"))
-                })?),
-                TokenType::Bang => Object::new(!right.is_truthy()),
-                _ => panic!("Unexpected unary operator: {:?}", expr.op),
-            };
+        let value = match expr.op.ty {
+            TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
+                RuntimeError::with_token(&expr.op, format!("Invalid operand: {e}"))
+            })?),
+            TokenType::Bang => Object::new(!right.is_truthy()),
+            _ => panic!("Unexpected unary operator: {:?}", expr.op),
+        };
 
         Ok(value)
     }
@@ -191,7 +203,7 @@ impl ExprVisitor for &mut Interpreter {
         let value = this.evaluate(arena.expr_ref(expr.value))?;
         this.env
             .assign(expr.name.ty.ident(), value)
-            .map_err(|e| RuntimeError::custom(&expr.name, e))
+            .map_err(|e| RuntimeError::with_token(&expr.name, e))
     }
 
     fn visit_logical(self, expr: AstRef<ExprLogical>) -> Self::T {
@@ -211,7 +223,7 @@ impl ExprVisitor for &mut Interpreter {
 }
 
 impl StmtVisitor for &mut Interpreter {
-    type T = Result<(), RuntimeError>;
+    type T = Result<(), ControlFlow>;
 
     fn visit_print(self, stmt: AstRef<StmtPrint>) -> Self::T {
         let arena = stmt.arena();

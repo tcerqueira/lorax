@@ -27,9 +27,9 @@ impl Span {
     }
 }
 
-impl Spanned for Span {
+impl Spanned for &Span {
     fn span(&self) -> Span {
-        self.clone()
+        (*self).clone()
     }
 }
 
