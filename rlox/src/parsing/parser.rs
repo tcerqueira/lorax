@@ -13,6 +13,7 @@ use crate::{
 // statement        => exprStmt
 //                  | ifStmt;
 //                  | printStmt
+//                  | returnStmt
 //                  | whileStmt
 //                  | forStmt
 //                  | block ;
@@ -25,6 +26,7 @@ use crate::{
 // varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
 // exprStmt         => expression ";" ;
 // printStmt        => "print" expression ";" ;
+// returnStmt       => "return" expression? ";" ;
 // whileStmt        => "while" "(" expression ")" statement ;
 // forStmt          => "for" "(" ( varDecl | exprStmt | ";" )
 //                  expression? ";"
@@ -180,6 +182,7 @@ impl<'a> Parser<'a> {
         match self.peek_type() {
             Some(TokenType::If) => self.if_stmt(),
             Some(TokenType::Print) => self.print_stmt(),
+            Some(TokenType::Return) => self.return_stmt(),
             Some(TokenType::While) => self.while_stmt(),
             Some(TokenType::For) => self.for_stmt(),
             Some(TokenType::LeftBrace) => {
@@ -216,6 +219,18 @@ impl<'a> Parser<'a> {
         let expr = self.alloc_expr(expr);
         self.consume(TokenType::Semicolon)?;
         Ok(StmtPrint { print_token, expr }.into())
+    }
+
+    fn return_stmt(&mut self) -> Result<Stmt, ParsingError> {
+        let return_token = self.consume(TokenType::Return)?;
+        let expr = match self.peek_type() {
+            Some(TokenType::Semicolon) => None,
+            _ => Some(self.expression()?),
+        }
+        .map(|e| self.alloc_expr(e));
+
+        self.consume(TokenType::Semicolon)?;
+        Ok(StmtReturn { return_token, expr }.into())
     }
 
     fn while_stmt(&mut self) -> Result<Stmt, ParsingError> {

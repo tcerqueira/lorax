@@ -23,6 +23,7 @@ pub trait StmtVisitor {
     fn visit_var(self, stmt: AstRef<StmtVar>) -> Self::T;
     fn visit_block(self, stmt: AstRef<StmtBlock>) -> Self::T;
     fn visit_if(self, stmt: AstRef<StmtIf>) -> Self::T;
+    fn visit_return(self, stmt: AstRef<StmtReturn>) -> Self::T;
     fn visit_while(self, stmt: AstRef<StmtWhile>) -> Self::T;
     fn visit_function(self, stmt: AstRef<StmtFunction>) -> Self::T;
 }
@@ -50,6 +51,7 @@ impl<'a> AstRef<'a, Stmt> {
             Stmt::Var(_) => visitor.visit_var(self.cast()),
             Stmt::Block(_) => visitor.visit_block(self.cast()),
             Stmt::If(_) => visitor.visit_if(self.cast()),
+            Stmt::Return(_) => visitor.visit_return(self.cast()),
             Stmt::While(_) => visitor.visit_while(self.cast()),
             Stmt::Function(_) => visitor.visit_function(self.cast()),
         }

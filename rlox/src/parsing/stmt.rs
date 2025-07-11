@@ -10,6 +10,7 @@ pub enum Stmt {
     Var(StmtVar),
     Block(StmtBlock),
     If(StmtIf),
+    Return(StmtReturn),
     While(StmtWhile),
     Function(StmtFunction),
 }
@@ -42,6 +43,13 @@ pub struct StmtIf {
     pub condition: ExprId,
     pub then_branch: StmtId,
     pub else_branch: Option<StmtId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StmtReturn {
+    #[expect(dead_code)]
+    pub return_token: Token,
+    pub expr: Option<ExprId>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +97,7 @@ impl_stmt_node!(Stmt::Expression, StmtExpression);
 impl_stmt_node!(Stmt::Var, StmtVar);
 impl_stmt_node!(Stmt::Block, StmtBlock);
 impl_stmt_node!(Stmt::If, StmtIf);
+impl_stmt_node!(Stmt::Return, StmtReturn);
 impl_stmt_node!(Stmt::While, StmtWhile);
 impl_stmt_node!(Stmt::Function, StmtFunction);
 
@@ -131,6 +140,12 @@ impl From<StmtBlock> for Stmt {
 impl From<StmtIf> for Stmt {
     fn from(value: StmtIf) -> Self {
         Stmt::If(value)
+    }
+}
+
+impl From<StmtReturn> for Stmt {
+    fn from(value: StmtReturn) -> Self {
+        Stmt::Return(value)
     }
 }
 

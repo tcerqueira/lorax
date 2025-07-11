@@ -269,6 +269,16 @@ impl StmtVisitor for &mut Interpreter {
         }
     }
 
+    fn visit_return(self, stmt: AstRef<StmtReturn>) -> Self::T {
+        let arena = stmt.arena();
+        Err(ControlFlow::Return(
+            match stmt.expr.map(|e| arena.expr_ref(e)) {
+                Some(expr) => self.evaluate(expr)?,
+                None => Object::nil(),
+            },
+        ))
+    }
+
     fn visit_while(self, stmt: AstRef<StmtWhile>) -> Self::T {
         let arena = stmt.arena();
 
