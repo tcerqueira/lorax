@@ -92,10 +92,10 @@ impl Interpreter {
     }
 }
 
-impl ExprVisitor for Interpreter {
+impl ExprVisitor for &mut Interpreter {
     type T = Result<Object, RuntimeError>;
 
-    fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
+    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
         let left = self.evaluate(&expr.left)?;
         let right = self.evaluate(&expr.right)?;
         let err_handler = |e| RuntimeError::custom(&expr.op, e);
@@ -118,7 +118,7 @@ impl ExprVisitor for Interpreter {
         Ok(value)
     }
 
-    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
+    fn visit_call(self, expr: &ExprCall) -> Self::T {
         let mut this = self.new_span(expr.callee.span());
         let callee = this.evaluate(&expr.callee)?;
         let args = expr
@@ -143,15 +143,15 @@ impl ExprVisitor for Interpreter {
         Ok(result)
     }
 
-    fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
+    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
         self.evaluate(&expr.0)
     }
 
-    fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
         Ok(expr.literal.clone())
     }
 
-    fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
         let mut this = self.new_span(expr.span());
         let right = this.evaluate(&expr.right)?;
         let value =
@@ -166,13 +166,13 @@ impl ExprVisitor for Interpreter {
         Ok(value)
     }
 
-    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
         self.env
             .get(expr.name.ty.ident())
             .ok_or_else(|| RuntimeError::undefined(&expr.name))
     }
 
-    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
         let mut this = self.new_span(expr.span());
         let value = this.evaluate(&expr.value)?;
         this.env
@@ -180,7 +180,7 @@ impl ExprVisitor for Interpreter {
             .map_err(|e| RuntimeError::custom(&expr.name, e))
     }
 
-    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
+    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
         let mut this = self.new_span(expr.span());
         let left = this.evaluate(&expr.left)?;
         match (&expr.op.ty, left.is_truthy()) {
@@ -193,21 +193,21 @@ impl ExprVisitor for Interpreter {
     }
 }
 
-impl StmtVisitor for Interpreter {
+impl StmtVisitor for &mut Interpreter {
     type T = Result<(), RuntimeError>;
 
-    fn visit_print(&mut self, stmt: &StmtPrint) -> Self::T {
+    fn visit_print(self, stmt: &StmtPrint) -> Self::T {
         let value = self.evaluate(&stmt.expr)?;
         println!("{value}");
         Ok(())
     }
 
-    fn visit_expression(&mut self, stmt: &StmtExpression) -> Self::T {
+    fn visit_expression(self, stmt: &StmtExpression) -> Self::T {
         self.evaluate(&stmt.expr)?;
         Ok(())
     }
 
-    fn visit_var(&mut self, stmt: &StmtVar) -> Self::T {
+    fn visit_var(self, stmt: &StmtVar) -> Self::T {
         let initializer = stmt
             .initializer
             .as_ref()
@@ -219,12 +219,12 @@ impl StmtVisitor for Interpreter {
         Ok(())
     }
 
-    fn visit_block(&mut self, stmt: &StmtBlock) -> Self::T {
+    fn visit_block(self, stmt: &StmtBlock) -> Self::T {
         let mut scope = self.new_env();
         scope.execute_block(&stmt.statements)
     }
 
-    fn visit_if(&mut self, stmt: &StmtIf) -> Self::T {
+    fn visit_if(self, stmt: &StmtIf) -> Self::T {
         if self.evaluate(&stmt.condition)?.is_truthy() {
             self.execute(&stmt.then_branch)
         } else if let Some(else_branch) = &stmt.else_branch {
@@ -234,14 +234,14 @@ impl StmtVisitor for Interpreter {
         }
     }
 
-    fn visit_while(&mut self, stmt: &StmtWhile) -> Self::T {
+    fn visit_while(self, stmt: &StmtWhile) -> Self::T {
         while self.evaluate(&stmt.condition)?.is_truthy() {
             self.execute(&stmt.body)?;
         }
         Ok(())
     }
 
-    fn visit_function(&mut self, stmt: &StmtFunction) -> Self::T {
+    fn visit_function(self, stmt: &StmtFunction) -> Self::T {
         let stmt = stmt.clone();
         self.env.define(
             stmt.name.ty().ident().into(),

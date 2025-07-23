@@ -73,7 +73,7 @@ pub struct ExprLogical {
 }
 
 impl Expr {
-    pub fn accept<R>(&self, visitor: &mut impl ExprVisitor<T = R>) -> R {
+    pub fn accept<R>(&self, visitor: impl ExprVisitor<T = R>) -> R {
         match self {
             Expr::Binary(e) => visitor.visit_binary(e),
             Expr::Call(e) => visitor.visit_call(e),
@@ -124,21 +124,21 @@ struct StdPrinter<'a, 'f> {
     fmt: &'a mut fmt::Formatter<'f>,
 }
 
-impl ExprVisitor for StdPrinter<'_, '_> {
+impl ExprVisitor for &mut StdPrinter<'_, '_> {
     type T = fmt::Result;
 
-    fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
-        expr.left.accept(self)?;
+    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
+        expr.left.accept(&mut *self)?;
         write!(self.fmt, " {} ", expr.op.ty)?;
         expr.right.accept(self)
     }
 
-    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
-        expr.callee.accept(self)?;
+    fn visit_call(self, expr: &ExprCall) -> Self::T {
+        expr.callee.accept(&mut *self)?;
         write!(self.fmt, "(")?;
         let mut iter = expr.args.iter().peekable();
         while let Some(arg) = iter.next() {
-            arg.accept(self)?;
+            arg.accept(&mut *self)?;
             if iter.peek().is_some() {
                 write!(self.fmt, ", ")?;
             }
@@ -146,32 +146,32 @@ impl ExprVisitor for StdPrinter<'_, '_> {
         write!(self.fmt, ")")
     }
 
-    fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
+    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
         write!(self.fmt, "(")?;
-        expr.0.accept(self)?;
+        expr.0.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
         write!(self.fmt, "{}", expr.token.ty)
     }
 
-    fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
         write!(self.fmt, "{}", expr.op.ty)?;
         expr.right.accept(self)
     }
 
-    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
 
-    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
         write!(self.fmt, "{} = ", expr.name.ty)?;
         expr.value.accept(self)
     }
 
-    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
-        expr.left.accept(self)?;
+    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
+        expr.left.accept(&mut *self)?;
         write!(self.fmt, " {} ", expr.op.ty)?;
         expr.right.accept(self)
     }
@@ -181,26 +181,26 @@ pub struct AstPrinter<'a, 'f> {
     pub fmt: &'a mut fmt::Formatter<'f>,
 }
 
-impl ExprVisitor for AstPrinter<'_, '_> {
+impl ExprVisitor for &mut AstPrinter<'_, '_> {
     type T = fmt::Result;
 
-    fn visit_binary(&mut self, expr: &ExprBinary) -> Self::T {
+    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.left.accept(self)?;
+        expr.left.accept(&mut *self)?;
         write!(self.fmt, " ")?;
-        expr.right.accept(self)?;
+        expr.right.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_call(&mut self, expr: &ExprCall) -> Self::T {
+    fn visit_call(self, expr: &ExprCall) -> Self::T {
         write!(self.fmt, "(call ")?;
-        expr.callee.accept(self)?;
+        expr.callee.accept(&mut *self)?;
         if !expr.args.is_empty() {
             write!(self.fmt, " ")?;
         }
         let mut iter = expr.args.iter().peekable();
         while let Some(arg) = iter.next() {
-            arg.accept(self)?;
+            arg.accept(&mut *self)?;
             if iter.peek().is_some() {
                 write!(self.fmt, ", ")?;
             }
@@ -208,37 +208,37 @@ impl ExprVisitor for AstPrinter<'_, '_> {
         write!(self.fmt, ")")
     }
 
-    fn visit_grouping(&mut self, expr: &ExprGrouping) -> Self::T {
+    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
         write!(self.fmt, "(group ")?;
-        expr.0.accept(self)?;
+        expr.0.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_literal(&mut self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
         write!(self.fmt, "{}", expr.token.ty)
     }
 
-    fn visit_unary(&mut self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.right.accept(self)?;
+        expr.right.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_variable(&mut self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
 
-    fn visit_assign(&mut self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
         write!(self.fmt, "(= {}", expr.name.ty)?;
-        expr.value.accept(self)?;
+        expr.value.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_logical(&mut self, expr: &ExprLogical) -> Self::T {
+    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.left.accept(self)?;
+        expr.left.accept(&mut *self)?;
         write!(self.fmt, " ")?;
-        expr.right.accept(self)?;
+        expr.right.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 }

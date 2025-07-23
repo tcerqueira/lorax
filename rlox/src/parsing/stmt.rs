@@ -56,7 +56,7 @@ pub struct StmtFunction {
 }
 
 impl Stmt {
-    pub fn accept<R>(&self, visitor: &mut impl StmtVisitor<T = R>) -> R {
+    pub fn accept<R>(&self, visitor: impl StmtVisitor<T = R>) -> R {
         match self {
             Stmt::Print(s) => visitor.visit_print(s),
             Stmt::Expression(s) => visitor.visit_expression(s),
