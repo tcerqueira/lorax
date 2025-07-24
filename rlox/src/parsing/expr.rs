@@ -2,6 +2,7 @@ use std::fmt::{self, Debug, Display};
 
 use super::visitor::ExprVisitor;
 use crate::{
+    parsing::ast::AstNode,
     report::{Span, Spanned},
     runtime::object::Object,
     tokens::Token,
@@ -113,6 +114,38 @@ impl Spanned for Expr {
         }
     }
 }
+
+macro_rules! impl_expr_node {
+    ($variant:path, $type:ident) => {
+        impl $crate::parsing::ast::AstNode for $type {
+            type NodeType = Expr;
+
+            fn try_as_variant(expr: &$crate::parsing::expr::Expr) -> Option<&Self> {
+                match expr {
+                    $variant(expr) => Some(expr),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+impl AstNode for Expr {
+    type NodeType = Expr;
+
+    fn try_as_variant(node: &Self::NodeType) -> Option<&Self> {
+        Some(node)
+    }
+}
+
+impl_expr_node!(Expr::Binary, ExprBinary);
+impl_expr_node!(Expr::Call, ExprCall);
+impl_expr_node!(Expr::Grouping, ExprGrouping);
+impl_expr_node!(Expr::Literal, ExprLiteral);
+impl_expr_node!(Expr::Unary, ExprUnary);
+impl_expr_node!(Expr::Variable, ExprVariable);
+impl_expr_node!(Expr::Assign, ExprAssign);
+impl_expr_node!(Expr::Logical, ExprLogical);
 
 impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

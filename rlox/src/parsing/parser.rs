@@ -1,7 +1,11 @@
 use std::{collections::VecDeque, fmt::Display};
 
 use super::{error::ParsingError, expr::*, stmt::*};
-use crate::{runtime::object::Object, tokens::*};
+use crate::{
+    parsing::ast::{AstArena, StmtId},
+    runtime::object::Object,
+    tokens::*,
+};
 
 // program          => declaration* EOF ;
 //
@@ -46,7 +50,8 @@ use crate::{runtime::object::Object, tokens::*};
 //                  | "(" expression ")"
 //                  | IDENTIFIER ;
 
-pub struct Parser {
+pub struct Parser<'a> {
+    arena: &'a mut AstArena,
     tokens: VecDeque<Token>,
     eof: Token,
 }
@@ -68,22 +73,23 @@ macro_rules! tt_pat {
     };
 }
 
-impl Parser {
-    pub fn new(mut tokens: Vec<Token>) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(arena: &'a mut AstArena, mut tokens: Vec<Token>) -> Self {
         // None means EOF and we keep the token for reporting
         let eof = tokens.pop().expect("always have EOF token");
         Self {
+            arena,
             tokens: tokens.into(),
             eof,
         }
     }
 
-    pub fn parse(mut self) -> Result<Vec<Stmt>, Vec<ParsingError>> {
+    pub fn parse(mut self) -> Result<Vec<StmtId>, Vec<ParsingError>> {
         let mut stmts = vec![];
         let mut errs = vec![];
         while self.peek().is_some() {
             match self.declaration() {
-                Ok(stmt) => stmts.push(stmt),
+                Ok(stmt) => stmts.push(self.arena.alloc_stmt(stmt)),
                 Err(err) => {
                     if err.should_sync {
                         self.synchronize();
@@ -479,7 +485,7 @@ impl Parser {
 
     fn comma_separated<T>(
         &mut self,
-        mut parse_fn: impl FnMut(&mut Parser) -> Result<T, ParsingError>,
+        mut parse_fn: impl FnMut(&mut Parser<'a>) -> Result<T, ParsingError>,
     ) -> Result<Vec<T>, ParsingError> {
         let mut args = Vec::new();
         loop {
@@ -558,7 +564,9 @@ mod tests {
     fn parse_grouping() {
         let src = "(42)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
-        let expr = Parser::new(tokens).expression().unwrap();
+
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(group 42)")
     }
@@ -568,7 +576,8 @@ mod tests {
         let src = "42 == 42 != 69 != 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(!= (!= (== 42 42) 69) 420)")
     }
@@ -578,7 +587,8 @@ mod tests {
         let src = "42 < 69 <= 69 > 13 >= 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
@@ -588,7 +598,8 @@ mod tests {
         let src = "42 - 69 + 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(+ (- 42 69) 420)");
     }
@@ -598,7 +609,8 @@ mod tests {
         let src = "42 / 69 * 420";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(* (/ 42 69) 420)");
     }
@@ -608,7 +620,8 @@ mod tests {
         let src = "!-42";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(expr.polish_notation(), "(! (- 42))");
     }
@@ -618,7 +631,8 @@ mod tests {
         let src = "-fn_name(2, \"wtv\")()";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(
             expr.polish_notation(),
@@ -631,7 +645,8 @@ mod tests {
         let src = "42 + -69 * 420 == (\"wtv\" > !false != nil)";
         let tokens = Scanner::new(src).scan_tokens().unwrap();
 
-        let expr = Parser::new(tokens).expression().unwrap();
+        let mut arena = AstArena::default();
+        let expr = Parser::new(&mut arena, tokens).expression().unwrap();
 
         assert_eq!(
             expr.polish_notation(),

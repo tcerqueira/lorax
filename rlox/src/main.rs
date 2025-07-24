@@ -61,7 +61,7 @@ fn run(source: String, interpreter: &mut Interpreter) -> crate::Result<()> {
         .scan_tokens()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    let program = Parser::new(tokens)
+    let program = Parser::new(&mut interpreter.ast_arena, tokens)
         .parse()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
