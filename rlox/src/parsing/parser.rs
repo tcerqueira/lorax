@@ -2,7 +2,7 @@ use std::{collections::VecDeque, fmt::Display};
 
 use super::{error::ParsingError, expr::*, stmt::*};
 use crate::{
-    parsing::ast::{AstArena, StmtId},
+    parsing::ast::{AstArena, ExprId, StmtId},
     runtime::object::Object,
     tokens::*,
 };
@@ -84,12 +84,29 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn alloc_expr(&mut self, expr: Expr) -> ExprId {
+        self.arena.alloc_expr(expr).id()
+    }
+
+    fn alloc_stmt(&mut self, stmt: Stmt) -> StmtId {
+        self.arena.alloc_stmt(stmt).id()
+    }
+
+    fn alloc_expr_vec(&mut self, stmts: impl IntoIterator<Item = Expr>) -> Vec<ExprId> {
+        stmts.into_iter().map(|s| self.alloc_expr(s)).collect()
+    }
+
+    fn alloc_stmt_vec(&mut self, stmts: impl IntoIterator<Item = Stmt>) -> Vec<StmtId> {
+        stmts.into_iter().map(|s| self.alloc_stmt(s)).collect()
+    }
+
     pub fn parse(mut self) -> Result<Vec<StmtId>, Vec<ParsingError>> {
         let mut stmts = vec![];
         let mut errs = vec![];
+
         while self.peek().is_some() {
             match self.declaration() {
-                Ok(stmt) => stmts.push(self.arena.alloc_stmt(stmt)),
+                Ok(stmt) => stmts.push(self.alloc_stmt(stmt)),
                 Err(err) => {
                     if err.should_sync {
                         self.synchronize();
@@ -98,6 +115,7 @@ impl<'a> Parser<'a> {
                 }
             };
         }
+
         if !errs.is_empty() {
             Err(errs)
         } else {
@@ -122,6 +140,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::RightParen)?;
 
         let body = self.block()?;
+        let body = self.alloc_stmt_vec(body);
 
         Ok(StmtFunction { name, params, body }.into())
     }
@@ -150,7 +169,9 @@ impl<'a> Parser<'a> {
         let initializer = self
             .matches(TokenType::Equal)
             .map(|_| self.expression())
-            .transpose()?;
+            .transpose()?
+            .map(|init| self.alloc_expr(init));
+
         self.consume(TokenType::Semicolon)?;
         Ok(StmtVar { ident, initializer }.into())
     }
@@ -161,10 +182,11 @@ impl<'a> Parser<'a> {
             Some(TokenType::Print) => self.print_stmt(),
             Some(TokenType::While) => self.while_stmt(),
             Some(TokenType::For) => self.for_stmt(),
-            Some(TokenType::LeftBrace) => Ok(StmtBlock {
-                statements: self.block()?,
+            Some(TokenType::LeftBrace) => {
+                let block = self.block()?;
+                let statements = self.alloc_stmt_vec(block);
+                Ok(StmtBlock { statements }.into())
             }
-            .into()),
             _ => self.expression_stmt(),
         }
     }
@@ -183,6 +205,7 @@ impl<'a> Parser<'a> {
 
     fn expression_stmt(&mut self) -> Result<Stmt, ParsingError> {
         let expr = self.expression()?;
+        let expr = self.alloc_expr(expr);
         self.consume(TokenType::Semicolon)?;
         Ok(StmtExpression { expr }.into())
     }
@@ -190,6 +213,7 @@ impl<'a> Parser<'a> {
     fn print_stmt(&mut self) -> Result<Stmt, ParsingError> {
         let print_token = self.consume(TokenType::Print)?;
         let expr = self.expression()?;
+        let expr = self.alloc_expr(expr);
         self.consume(TokenType::Semicolon)?;
         Ok(StmtPrint { print_token, expr }.into())
     }
@@ -198,8 +222,10 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::While)?;
         self.consume(TokenType::LeftParen)?;
         let condition = self.expression()?;
+        let condition = self.alloc_expr(condition);
         self.consume(TokenType::RightParen)?;
-        let body = Box::new(self.statement()?);
+        let body = self.statement()?;
+        let body = self.alloc_stmt(body);
         Ok(StmtWhile { condition, body }.into())
     }
 
@@ -213,12 +239,14 @@ impl<'a> Parser<'a> {
             }
             Some(TokenType::Var) => Some(self.var_decl()?),
             _ => Some(self.expression_stmt()?),
-        };
+        }
+        .map(|init| self.alloc_stmt(init));
 
         let condition = match self.peek_type() {
             Some(TokenType::Semicolon) => None,
             _ => Some(self.expression()?),
-        };
+        }
+        .map(|cond| self.alloc_expr(cond));
         self.consume(TokenType::Semicolon)?;
 
         let increment = match self.peek_type() {
@@ -227,31 +255,32 @@ impl<'a> Parser<'a> {
         };
         self.consume(TokenType::RightParen)?;
 
-        let mut body = self.statement()?;
-        if let Some(increment) = increment {
-            body = StmtBlock {
-                statements: vec![body, increment.into()],
+        let body = self.statement()?;
+        let mut body = self.alloc_stmt(body);
+        if let Some(increment) = increment.map(|inc| self.alloc_expr(inc)) {
+            let block = StmtBlock {
+                statements: vec![body, self.alloc_stmt(increment.into())],
             }
             .into();
+            body = self.alloc_stmt(block);
         };
         let condition = condition.unwrap_or_else(|| {
-            ExprLiteral {
-                literal: Object::new(true),
-                // FIXME: desugaring results in a fake literal token
-                token: self.eof.clone(),
-            }
-            .into()
+            self.alloc_expr(
+                ExprLiteral {
+                    literal: Object::new(true),
+                    // FIXME: desugaring results in a fake literal token
+                    token: self.eof.clone(),
+                }
+                .into(),
+            )
         });
-        let while_stmt = StmtWhile {
-            body: Box::new(body),
-            condition,
-        }
-        .into();
+        let while_stmt = StmtWhile { body, condition }.into();
         Ok(match initialization {
             Some(initialization) => StmtBlock {
-                statements: vec![initialization, while_stmt],
+                statements: vec![initialization, self.alloc_stmt(while_stmt)],
             }
             .into(),
+
             None => while_stmt,
         })
     }
@@ -260,13 +289,16 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::If)?;
         self.consume(TokenType::LeftParen)?;
         let condition = self.expression()?;
+        let condition = self.alloc_expr(condition);
         self.consume(TokenType::RightParen)?;
-        let then_branch = Box::new(self.statement()?);
+        let then_branch = self.statement()?;
+        let then_branch = self.alloc_stmt(then_branch);
 
         let else_branch = self
             .matches(TokenType::Else)
-            .map(|_| self.statement().map(Box::new))
-            .transpose()?;
+            .map(|_| self.statement())
+            .transpose()?
+            .map(|s| self.alloc_stmt(s));
 
         Ok(StmtIf {
             condition,
@@ -283,7 +315,8 @@ impl<'a> Parser<'a> {
     fn assignment(&mut self) -> Result<Expr, ParsingError> {
         let expr = self.logic_or()?;
         if let Some(ref equals) = self.matches(TokenType::Equal) {
-            let value = Box::new(self.assignment()?);
+            let value = self.assignment()?;
+            let value = self.alloc_expr(value);
 
             return match expr {
                 Expr::Variable(ExprVariable { name }) => Ok(ExprAssign { name, value }.into()),
@@ -299,8 +332,8 @@ impl<'a> Parser<'a> {
             let right = self.logic_and()?;
             expr = ExprLogical {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -313,8 +346,8 @@ impl<'a> Parser<'a> {
             let right = self.equality()?;
             expr = ExprLogical {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -329,8 +362,8 @@ impl<'a> Parser<'a> {
             let right = self.comparison()?;
             expr = ExprBinary {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -352,8 +385,8 @@ impl<'a> Parser<'a> {
             let right = self.term()?;
             expr = ExprBinary {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -367,8 +400,8 @@ impl<'a> Parser<'a> {
             let right = self.factor()?;
             expr = ExprBinary {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -382,8 +415,8 @@ impl<'a> Parser<'a> {
             let right = self.unary()?;
             expr = ExprBinary {
                 op,
-                left: Box::new(expr),
-                right: Box::new(right),
+                left: self.alloc_expr(expr),
+                right: self.alloc_expr(right),
             }
             .into();
         }
@@ -392,11 +425,14 @@ impl<'a> Parser<'a> {
 
     fn unary(&mut self) -> Result<Expr, ParsingError> {
         let expr = match self.matches_with(|t| matches!(t, TokenType::Bang | TokenType::Minus)) {
-            Some(op) => ExprUnary {
-                op,
-                right: Box::new(self.unary()?),
+            Some(op) => {
+                let expr = self.unary()?;
+                ExprUnary {
+                    op,
+                    right: self.alloc_expr(expr),
+                }
+                .into()
             }
-            .into(),
             None => self.call()?,
         };
         Ok(expr)
@@ -406,10 +442,12 @@ impl<'a> Parser<'a> {
         let mut expr = self.primary()?;
         while self.matches(TokenType::LeftParen).is_some() {
             let args = self.arguments()?;
+            let args = self.alloc_expr_vec(args);
+
             let r_paren = self.consume(TokenType::RightParen)?;
 
             expr = ExprCall {
-                callee: Box::new(expr),
+                callee: self.alloc_expr(expr),
                 r_paren,
                 args,
             }
@@ -450,8 +488,8 @@ impl<'a> Parser<'a> {
                 ExprLiteral { token, literal }.into()
             }
             Some(tt_pat!(TokenType::LeftParen)) => {
-                let inner = Box::new(self.expression()?);
-                let expr = ExprGrouping(inner).into();
+                let inner = self.expression()?;
+                let expr = ExprGrouping(self.alloc_expr(inner)).into();
                 self.consume(TokenType::RightParen)?;
                 expr
             }
@@ -567,6 +605,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(group 42)")
     }
@@ -578,6 +617,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(!= (!= (== 42 42) 69) 420)")
     }
@@ -589,6 +629,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(>= (> (<= (< 42 69) 69) 13) 420)");
     }
@@ -600,6 +641,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(+ (- 42 69) 420)");
     }
@@ -611,6 +653,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(* (/ 42 69) 420)");
     }
@@ -622,6 +665,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(expr.polish_notation(), "(! (- 42))");
     }
@@ -633,6 +677,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(
             expr.polish_notation(),
@@ -647,6 +692,7 @@ mod tests {
 
         let mut arena = AstArena::default();
         let expr = Parser::new(&mut arena, tokens).expression().unwrap();
+        let expr = arena.alloc_expr(expr);
 
         assert_eq!(
             expr.polish_notation(),

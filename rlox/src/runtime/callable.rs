@@ -1,7 +1,10 @@
 use std::fmt::{Debug, Display};
 
 use crate::{
-    parsing::stmt::StmtFunction,
+    parsing::{
+        ast::{AstArena, AstRef, StmtId},
+        stmt::StmtFunction,
+    },
     runtime::{Interpreter, error::RuntimeError, object::Object},
 };
 
@@ -11,6 +14,7 @@ pub trait ObjCallable {
     fn call(
         &self,
         interpreter: &mut Interpreter,
+        ast_arena: &AstArena,
         args: Vec<Object>,
     ) -> Result<Object, RuntimeError>;
 }
@@ -45,6 +49,7 @@ impl ObjCallable for NativeFunction {
     fn call(
         &self,
         interpreter: &mut Interpreter,
+        _ast_arena: &AstArena,
         args: Vec<Object>,
     ) -> Result<Object, RuntimeError> {
         (self.func)(interpreter, args)
@@ -52,37 +57,40 @@ impl ObjCallable for NativeFunction {
 }
 
 pub struct Function {
-    decl: StmtFunction,
+    decl: StmtId,
+    name: Box<str>,
+    arity: u8,
 }
 
 impl Function {
-    pub fn new(decl: StmtFunction) -> Self {
-        Self { decl }
+    pub fn new(decl: AstRef<StmtFunction>) -> Self {
+        let name = decl.name.ty().ident().into();
+        let arity = decl.params.len().try_into().expect("arity always < 256");
+        let decl = decl.id();
+        Self { decl, name, arity }
     }
 
     pub fn name(&self) -> &str {
-        self.decl.name.ty().ident()
+        &self.name
     }
 }
 
 impl ObjCallable for Function {
     fn arity(&self) -> u8 {
-        self.decl
-            .params
-            .len()
-            .try_into()
-            .expect("arity always < 256")
+        self.arity
     }
 
     fn call(
         &self,
         interpreter: &mut Interpreter,
+        arena: &AstArena,
         args: Vec<Object>,
     ) -> Result<Object, RuntimeError> {
         let mut interpreter = interpreter.new_env();
-        std::iter::zip(&self.decl.params, args)
+        let decl = arena.stmt_ref(self.decl).cast::<StmtFunction>();
+        std::iter::zip(&decl.params, args)
             .for_each(|(param, arg)| interpreter.env.define(param.ty().ident().into(), arg));
-        interpreter.execute_block(&self.decl.body)?;
+        interpreter.execute_block(decl.body.iter().map(|&s| arena.stmt_ref(s)))?;
         Ok(Object::nil())
     }
 }
@@ -131,7 +139,7 @@ impl Display for Function {
 
 impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
-        self.decl.name == other.decl.name
+        self.name == other.name
     }
 }
 

@@ -1,5 +1,7 @@
-use super::{expr::Expr, visitor::StmtVisitor};
-use crate::tokens::Token;
+use crate::{
+    parsing::ast::{AstNode, AstRef, ExprId, StmtId},
+    tokens::Token,
+};
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -16,67 +18,88 @@ pub enum Stmt {
 pub struct StmtPrint {
     #[expect(dead_code)]
     pub print_token: Token,
-    pub expr: Expr,
+    pub expr: ExprId,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtExpression {
-    pub expr: Expr,
+    pub expr: ExprId,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtVar {
     pub ident: Token,
-    pub initializer: Option<Expr>,
+    pub initializer: Option<ExprId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtBlock {
-    pub statements: Vec<Stmt>,
+    pub statements: Vec<StmtId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtIf {
-    pub condition: Expr,
-    pub then_branch: Box<Stmt>,
-    pub else_branch: Option<Box<Stmt>>,
+    pub condition: ExprId,
+    pub then_branch: StmtId,
+    pub else_branch: Option<StmtId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtWhile {
-    pub condition: Expr,
-    pub body: Box<Stmt>,
+    pub condition: ExprId,
+    pub body: StmtId,
 }
 
 #[derive(Debug, Clone)]
 pub struct StmtFunction {
     pub name: Token,
     pub params: Vec<Token>,
-    pub body: Vec<Stmt>,
+    pub body: Vec<StmtId>,
 }
 
-impl Stmt {
-    pub fn accept<R>(&self, visitor: impl StmtVisitor<T = R>) -> R {
-        match self {
-            Stmt::Print(s) => visitor.visit_print(s),
-            Stmt::Expression(s) => visitor.visit_expression(s),
-            Stmt::Var(s) => visitor.visit_var(s),
-            Stmt::Block(s) => visitor.visit_block(s),
-            Stmt::If(s) => visitor.visit_if(s),
-            Stmt::While(s) => visitor.visit_while(s),
-            Stmt::Function(s) => visitor.visit_function(s),
+macro_rules! impl_stmt_node {
+    ($variant:path, $type:ident) => {
+        impl $crate::parsing::ast::AstNode for $type {
+            type NodeType = Stmt;
+
+            fn deref_node(node: $crate::parsing::ast::AstRef<'_, Self>) -> &Self {
+                match &node.arena()[node.id()] {
+                    $variant(stmt) => stmt,
+                    _ => panic!(
+                        "failed to unwrap {} on {}",
+                        std::any::type_name::<Self>(),
+                        std::any::type_name::<Self::NodeType>()
+                    ),
+                }
+            }
         }
+    };
+}
+
+impl AstNode for Stmt {
+    type NodeType = Stmt;
+
+    fn deref_node(node: AstRef<'_, Self>) -> &Self {
+        &node.arena()[node.id()]
     }
 }
 
-impl From<Expr> for StmtExpression {
-    fn from(expr: Expr) -> Self {
+impl_stmt_node!(Stmt::Print, StmtPrint);
+impl_stmt_node!(Stmt::Expression, StmtExpression);
+impl_stmt_node!(Stmt::Var, StmtVar);
+impl_stmt_node!(Stmt::Block, StmtBlock);
+impl_stmt_node!(Stmt::If, StmtIf);
+impl_stmt_node!(Stmt::While, StmtWhile);
+impl_stmt_node!(Stmt::Function, StmtFunction);
+
+impl From<ExprId> for StmtExpression {
+    fn from(expr: ExprId) -> Self {
         StmtExpression { expr }
     }
 }
 
-impl From<Expr> for Stmt {
-    fn from(expr: Expr) -> Self {
+impl From<ExprId> for Stmt {
+    fn from(expr: ExprId) -> Self {
         Stmt::Expression(expr.into())
     }
 }

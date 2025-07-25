@@ -13,6 +13,8 @@ use parsing::*;
 use report::*;
 use runtime::*;
 
+use crate::parsing::ast::AstArena;
+
 mod error;
 mod lexing;
 mod parsing;
@@ -33,11 +35,12 @@ fn main() -> crate::Result<()> {
 fn run_file(path: &Path) -> crate::Result<()> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("could not read source file {}", path.display()))?;
-    run(source, &mut Interpreter::new())
+    run(source, &mut Interpreter::new(), &mut AstArena::default())
 }
 
 fn run_prompt() -> crate::Result<()> {
     let mut buf_reader = BufReader::new(io::stdin());
+    let mut ast_arena = AstArena::default();
     let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
@@ -50,23 +53,27 @@ fn run_prompt() -> crate::Result<()> {
         if read == 0 {
             break;
         }
-        let _ = run(line, &mut interpreter);
+        let _ = run(line, &mut interpreter, &mut ast_arena);
     }
     Ok(())
 }
 
-fn run(source: String, interpreter: &mut Interpreter) -> crate::Result<()> {
+fn run(
+    source: String,
+    interpreter: &mut Interpreter,
+    ast_arena: &mut AstArena,
+) -> crate::Result<()> {
     let reporter = Reporter::new(&source);
     let tokens = Scanner::new(&source)
         .scan_tokens()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    let program = Parser::new(&mut interpreter.ast_arena, tokens)
+    let program = Parser::new(ast_arena, tokens)
         .parse()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
     interpreter
-        .interpret(program)
+        .interpret(program, ast_arena)
         .inspect_err(|e| reporter.report(e))?;
 
     Ok(())

@@ -19,8 +19,17 @@ impl AstArena {
         AstRef::new(self, id)
     }
 
-    pub fn alloc_stmt(&mut self, stmt: Stmt) -> StmtId {
-        self.statements.insert(stmt)
+    pub fn alloc_stmt(&mut self, stmt: Stmt) -> StmtRef<'_> {
+        let id = self.statements.insert(stmt);
+        AstRef::new(self, id)
+    }
+
+    pub fn expr_ref(&self, id: ExprId) -> AstRef<'_, Expr> {
+        AstRef::new(self, id)
+    }
+
+    pub fn stmt_ref(&self, id: StmtId) -> AstRef<'_, Stmt> {
+        AstRef::new(self, id)
     }
 }
 
@@ -52,7 +61,7 @@ impl IndexMut<StmtId> for AstArena {
     }
 }
 
-trait IdType {
+pub trait IdType {
     type Id: Key;
 }
 
@@ -67,29 +76,20 @@ impl IdType for Stmt {
 pub trait AstNode {
     type NodeType: IdType;
 
-    fn try_as_variant(node: &Self::NodeType) -> Option<&Self>;
-
-    fn as_variant(node: &Self::NodeType) -> &Self {
-        Self::try_as_variant(node).unwrap_or_else(|| {
-            panic!(
-                "failed to unwrap {} on {}",
-                std::any::type_name::<Self>(),
-                std::any::type_name::<Self::NodeType>()
-            )
-        })
-    }
+    fn deref_node(node: AstRef<'_, Self>) -> &Self;
 }
 
 pub type ExprRef<'a> = AstRef<'a, Expr>;
 pub type StmtRef<'a> = AstRef<'a, Stmt>;
 
-pub struct AstRef<'a, E: AstNode> {
+#[derive(Debug)]
+pub struct AstRef<'a, N: AstNode + ?Sized> {
     ast_arena: &'a AstArena,
-    id: <E::NodeType as IdType>::Id,
+    id: <N::NodeType as IdType>::Id,
 }
 
-impl<'a, E: AstNode> AstRef<'a, E> {
-    pub fn new(ast_arena: &'a AstArena, id: <E::NodeType as IdType>::Id) -> Self {
+impl<'a, N: AstNode> AstRef<'a, N> {
+    pub fn new(ast_arena: &'a AstArena, id: <N::NodeType as IdType>::Id) -> Self {
         Self { ast_arena, id }
     }
 
@@ -97,31 +97,42 @@ impl<'a, E: AstNode> AstRef<'a, E> {
         self.ast_arena
     }
 
-    pub fn id(&self) -> <E::NodeType as IdType>::Id {
+    pub fn id(&self) -> <N::NodeType as IdType>::Id {
         self.id
     }
 }
 
-impl<'a, E: AstNode<NodeType = Expr>> AstRef<'a, E> {
-    pub fn as_variant(&self) -> &'a E {
-        E::as_variant(&self.ast_arena[self.id])
+impl<'a, N: AstNode<NodeType = N> + IdType> AstRef<'a, N> {
+    pub fn cast<T>(&self) -> AstRef<'a, T>
+    where
+        T: AstNode<NodeType = N>,
+    {
+        AstRef::<T>::new(self.ast_arena, self.id)
     }
 }
 
-impl<'a, E: AstNode<NodeType = Expr>> Deref for AstRef<'a, E> {
-    type Target = E;
+impl<'a, N: AstNode> Deref for AstRef<'a, N> {
+    type Target = N;
 
     fn deref(&self) -> &Self::Target {
-        self.as_variant()
+        N::deref_node(*self)
     }
 }
 
-impl<'a, T, E: AstNode<NodeType = Expr>> AsRef<T> for AstRef<'a, E>
+impl<'a, T, N: AstNode> AsRef<T> for AstRef<'a, N>
 where
     T: ?Sized,
-    <AstRef<'a, E> as Deref>::Target: AsRef<T>,
+    <AstRef<'a, N> as Deref>::Target: AsRef<T>,
 {
     fn as_ref(&self) -> &T {
         self.deref().as_ref()
     }
 }
+
+impl<N: AstNode> Clone for AstRef<'_, N> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<N: AstNode> Copy for AstRef<'_, N> {}

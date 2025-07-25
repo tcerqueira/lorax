@@ -2,7 +2,7 @@ use std::fmt::{self, Debug, Display};
 
 use super::visitor::ExprVisitor;
 use crate::{
-    parsing::ast::AstNode,
+    parsing::ast::{AstNode, AstRef, ExprId, ExprRef},
     report::{Span, Spanned},
     runtime::object::Object,
     tokens::Token,
@@ -23,19 +23,19 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprBinary {
     pub op: Token,
-    pub left: Box<Expr>,
-    pub right: Box<Expr>,
+    pub left: ExprId,
+    pub right: ExprId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprCall {
-    pub callee: Box<Expr>,
+    pub callee: ExprId,
     pub r_paren: Token,
-    pub args: Vec<Expr>,
+    pub args: Vec<ExprId>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExprGrouping(pub Box<Expr>);
+pub struct ExprGrouping(pub ExprId);
 
 #[derive(Debug, Clone)]
 pub struct ExprLiteral {
@@ -52,7 +52,7 @@ impl PartialEq for ExprLiteral {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprUnary {
     pub op: Token,
-    pub right: Box<Expr>,
+    pub right: ExprId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,40 +63,27 @@ pub struct ExprVariable {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprAssign {
     pub name: Token,
-    pub value: Box<Expr>,
+    pub value: ExprId,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExprLogical {
     pub op: Token,
-    pub left: Box<Expr>,
-    pub right: Box<Expr>,
+    pub left: ExprId,
+    pub right: ExprId,
 }
 
-impl Expr {
-    pub fn accept<R>(&self, visitor: impl ExprVisitor<T = R>) -> R {
-        match self {
-            Expr::Binary(e) => visitor.visit_binary(e),
-            Expr::Call(e) => visitor.visit_call(e),
-            Expr::Grouping(e) => visitor.visit_grouping(e),
-            Expr::Literal(e) => visitor.visit_literal(e),
-            Expr::Unary(e) => visitor.visit_unary(e),
-            Expr::Variable(e) => visitor.visit_variable(e),
-            Expr::Assign(e) => visitor.visit_assign(e),
-            Expr::Logical(e) => visitor.visit_logical(e),
-        }
-    }
-
+impl ExprRef<'_> {
     #[cfg(test)]
     pub fn polish_notation(&self) -> String {
-        struct PolishNotation<'a>(&'a Expr);
+        struct PolishNotation<'a>(ExprRef<'a>);
         impl Display for PolishNotation<'_> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 self.0.accept(&mut AstPrinter { fmt: f })
             }
         }
 
-        PolishNotation(self).to_string()
+        PolishNotation(*self).to_string()
     }
 }
 
@@ -120,10 +107,14 @@ macro_rules! impl_expr_node {
         impl $crate::parsing::ast::AstNode for $type {
             type NodeType = Expr;
 
-            fn try_as_variant(expr: &$crate::parsing::expr::Expr) -> Option<&Self> {
-                match expr {
-                    $variant(expr) => Some(expr),
-                    _ => None,
+            fn deref_node(node: AstRef<'_, Self>) -> &Self {
+                match &node.arena()[node.id()] {
+                    $variant(expr) => expr,
+                    _ => panic!(
+                        "failed to unwrap {} on {}",
+                        std::any::type_name::<Self>(),
+                        std::any::type_name::<Self::NodeType>()
+                    ),
                 }
             }
         }
@@ -133,8 +124,8 @@ macro_rules! impl_expr_node {
 impl AstNode for Expr {
     type NodeType = Expr;
 
-    fn try_as_variant(node: &Self::NodeType) -> Option<&Self> {
-        Some(node)
+    fn deref_node(node: AstRef<'_, Self>) -> &Self {
+        &node.arena()[node.id()]
     }
 }
 
@@ -147,7 +138,7 @@ impl_expr_node!(Expr::Variable, ExprVariable);
 impl_expr_node!(Expr::Assign, ExprAssign);
 impl_expr_node!(Expr::Logical, ExprLogical);
 
-impl Display for Expr {
+impl Display for ExprRef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.accept(&mut StdPrinter { fmt: f })
     }
@@ -160,17 +151,24 @@ struct StdPrinter<'a, 'f> {
 impl ExprVisitor for &mut StdPrinter<'_, '_> {
     type T = fmt::Result;
 
-    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
-        expr.left.accept(&mut *self)?;
+    fn visit_binary(self, expr: AstRef<ExprBinary>) -> Self::T {
+        let arena = expr.arena();
+        let left = arena.expr_ref(expr.left);
+        let right = arena.expr_ref(expr.right);
+
+        left.accept(&mut *self)?;
         write!(self.fmt, " {} ", expr.op.ty)?;
-        expr.right.accept(self)
+        right.accept(self)
     }
 
-    fn visit_call(self, expr: &ExprCall) -> Self::T {
-        expr.callee.accept(&mut *self)?;
+    fn visit_call(self, expr: AstRef<ExprCall>) -> Self::T {
+        let arena = expr.arena();
+        let callee = arena.expr_ref(expr.callee);
+
+        callee.accept(&mut *self)?;
         write!(self.fmt, "(")?;
         let mut iter = expr.args.iter().peekable();
-        while let Some(arg) = iter.next() {
+        while let Some(arg) = iter.next().map(|&a| arena.expr_ref(a)) {
             arg.accept(&mut *self)?;
             if iter.peek().is_some() {
                 write!(self.fmt, ", ")?;
@@ -179,34 +177,44 @@ impl ExprVisitor for &mut StdPrinter<'_, '_> {
         write!(self.fmt, ")")
     }
 
-    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
+    fn visit_grouping(self, expr: AstRef<ExprGrouping>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "(")?;
-        expr.0.accept(&mut *self)?;
+        arena.expr_ref(expr.0).accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: AstRef<ExprLiteral>) -> Self::T {
         write!(self.fmt, "{}", expr.token.ty)
     }
 
-    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: AstRef<ExprUnary>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "{}", expr.op.ty)?;
-        expr.right.accept(self)
+        arena.expr_ref(expr.right).accept(self)
     }
 
-    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: AstRef<ExprVariable>) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
 
-    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: AstRef<ExprAssign>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "{} = ", expr.name.ty)?;
-        expr.value.accept(self)
+        arena.expr_ref(expr.value).accept(self)
     }
 
-    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
-        expr.left.accept(&mut *self)?;
+    fn visit_logical(self, expr: AstRef<ExprLogical>) -> Self::T {
+        let arena = expr.arena();
+        let left = arena.expr_ref(expr.left);
+        let right = arena.expr_ref(expr.right);
+
+        left.accept(&mut *self)?;
         write!(self.fmt, " {} ", expr.op.ty)?;
-        expr.right.accept(self)
+        right.accept(self)
     }
 }
 
@@ -217,22 +225,29 @@ pub struct AstPrinter<'a, 'f> {
 impl ExprVisitor for &mut AstPrinter<'_, '_> {
     type T = fmt::Result;
 
-    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
+    fn visit_binary(self, expr: AstRef<ExprBinary>) -> Self::T {
+        let arena = expr.arena();
+        let left = arena.expr_ref(expr.left);
+        let right = arena.expr_ref(expr.right);
+
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.left.accept(&mut *self)?;
+        left.accept(&mut *self)?;
         write!(self.fmt, " ")?;
-        expr.right.accept(&mut *self)?;
+        right.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_call(self, expr: &ExprCall) -> Self::T {
+    fn visit_call(self, expr: AstRef<ExprCall>) -> Self::T {
+        let arena = expr.arena();
+        let callee = arena.expr_ref(expr.callee);
+
         write!(self.fmt, "(call ")?;
-        expr.callee.accept(&mut *self)?;
+        callee.accept(&mut *self)?;
         if !expr.args.is_empty() {
             write!(self.fmt, " ")?;
         }
         let mut iter = expr.args.iter().peekable();
-        while let Some(arg) = iter.next() {
+        while let Some(arg) = iter.next().map(|&a| arena.expr_ref(a)) {
             arg.accept(&mut *self)?;
             if iter.peek().is_some() {
                 write!(self.fmt, ", ")?;
@@ -241,62 +256,76 @@ impl ExprVisitor for &mut AstPrinter<'_, '_> {
         write!(self.fmt, ")")
     }
 
-    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
+    fn visit_grouping(self, expr: AstRef<ExprGrouping>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "(group ")?;
-        expr.0.accept(&mut *self)?;
+        arena.expr_ref(expr.0).accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: AstRef<ExprLiteral>) -> Self::T {
         write!(self.fmt, "{}", expr.token.ty)
     }
 
-    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: AstRef<ExprUnary>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.right.accept(&mut *self)?;
+        arena.expr_ref(expr.right).accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: AstRef<ExprVariable>) -> Self::T {
         write!(self.fmt, "{}", expr.name.ty)
     }
 
-    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: AstRef<ExprAssign>) -> Self::T {
+        let arena = expr.arena();
+
         write!(self.fmt, "(= {}", expr.name.ty)?;
-        expr.value.accept(&mut *self)?;
+        arena.expr_ref(expr.value).accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 
-    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
+    fn visit_logical(self, expr: AstRef<ExprLogical>) -> Self::T {
+        let arena = expr.arena();
+        let left = arena.expr_ref(expr.left);
+        let right = arena.expr_ref(expr.right);
+
         write!(self.fmt, "({} ", expr.op.ty)?;
-        expr.left.accept(&mut *self)?;
+        left.accept(&mut *self)?;
         write!(self.fmt, " ")?;
-        expr.right.accept(&mut *self)?;
+        right.accept(&mut *self)?;
         write!(self.fmt, ")")
     }
 }
 
 impl Spanned for ExprBinary {
     fn span(&self) -> Span {
-        self.left.span().join(&self.right.span())
+        // self.left.span().join(&self.right.span())
+        Span::default()
     }
 }
 
 impl Spanned for ExprUnary {
     fn span(&self) -> Span {
-        self.op.span.join(&self.right.span())
+        // self.op.span.join(&self.right.span())
+        self.op.span.clone()
     }
 }
 
 impl Spanned for ExprCall {
     fn span(&self) -> Span {
-        self.callee.span().join(&self.r_paren.span)
+        // self.callee.span().join(&self.r_paren.span)
+        Span::default()
     }
 }
 
 impl Spanned for ExprGrouping {
     fn span(&self) -> Span {
-        self.0.span()
+        // self.0.span()
+        Span::default()
     }
 }
 
@@ -314,13 +343,15 @@ impl Spanned for ExprVariable {
 
 impl Spanned for ExprAssign {
     fn span(&self) -> Span {
-        self.name.span.join(&self.value.span())
+        // self.name.span.join(&self.value.span())
+        self.name.span.clone()
     }
 }
 
 impl Spanned for ExprLogical {
     fn span(&self) -> Span {
-        self.left.span().join(&self.right.span())
+        // self.left.span().join(&self.right.span())
+        Span::default()
     }
 }
 
@@ -375,37 +406,48 @@ impl From<ExprLogical> for Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tok;
+    use crate::{parsing::ast::AstArena, tok};
 
     #[test]
     fn test_printer() {
-        let expr: Expr = ExprBinary {
-            op: tok![*],
-            left: Box::new(
-                ExprUnary {
-                    op: tok![-],
-                    right: Box::new(
-                        ExprLiteral {
-                            token: (tok![n:123]),
-                            literal: Object::nil(),
-                        }
-                        .into(),
-                    ),
+        let mut arena = AstArena::default();
+        let unary_left = arena
+            .alloc_expr(
+                ExprLiteral {
+                    token: (tok![n:123]),
+                    literal: Object::nil(),
                 }
                 .into(),
-            ),
-            right: Box::new(
-                ExprGrouping(Box::new(
-                    ExprLiteral {
-                        token: (tok![n:45.67]),
-                        literal: Object::nil(),
-                    }
-                    .into(),
-                ))
+            )
+            .id();
+        let left = arena
+            .alloc_expr(
+                ExprUnary {
+                    op: tok![-],
+                    right: unary_left,
+                }
                 .into(),
-            ),
-        }
-        .into();
+            )
+            .id();
+        let literal_right = arena
+            .alloc_expr(
+                ExprLiteral {
+                    token: (tok![n:45.67]),
+                    literal: Object::nil(),
+                }
+                .into(),
+            )
+            .id();
+        let right = arena.alloc_expr(ExprGrouping(literal_right).into()).id();
+
+        let expr = arena.alloc_expr(
+            ExprBinary {
+                op: tok![*],
+                left,
+                right,
+            }
+            .into(),
+        );
 
         assert_eq!("(* (- 123) (group 45.67))", expr.polish_notation());
     }

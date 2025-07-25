@@ -7,6 +7,7 @@ use super::{environment::*, object::*};
 
 use crate::{
     parsing::{
+        ast::{AstArena, AstRef, ExprRef, StmtId, StmtRef},
         expr::*,
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
@@ -35,23 +36,30 @@ impl Interpreter {
         this
     }
 
-    pub fn interpret(&mut self, program: Vec<Stmt>) -> Result<(), RuntimeError> {
-        for statement in program {
-            self.execute(&statement)?;
+    pub fn interpret(
+        &mut self,
+        program: Vec<StmtId>,
+        ast_arena: &AstArena,
+    ) -> Result<(), RuntimeError> {
+        for statement in program.iter().map(|&s| ast_arena.stmt_ref(s)) {
+            self.execute(statement)?;
         }
         Ok(())
     }
 
-    fn evaluate(&mut self, expr: &Expr) -> Result<Object, RuntimeError> {
+    fn evaluate(&mut self, expr: ExprRef) -> Result<Object, RuntimeError> {
         let mut this = self.new_span(expr.span());
         expr.accept(&mut *this)
     }
 
-    fn execute(&mut self, stmt: &Stmt) -> Result<(), RuntimeError> {
+    fn execute(&mut self, stmt: StmtRef) -> Result<(), RuntimeError> {
         stmt.accept(self)
     }
 
-    pub(super) fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), RuntimeError> {
+    pub(super) fn execute_block<'a>(
+        &mut self,
+        statements: impl IntoIterator<Item = StmtRef<'a>>,
+    ) -> Result<(), RuntimeError> {
         for stmt in statements {
             self.execute(stmt)?;
         }
@@ -95,9 +103,10 @@ impl Interpreter {
 impl ExprVisitor for &mut Interpreter {
     type T = Result<Object, RuntimeError>;
 
-    fn visit_binary(self, expr: &ExprBinary) -> Self::T {
-        let left = self.evaluate(&expr.left)?;
-        let right = self.evaluate(&expr.right)?;
+    fn visit_binary(self, expr: AstRef<ExprBinary>) -> Self::T {
+        let arena = expr.arena();
+        let left = self.evaluate(arena.expr_ref(expr.left))?;
+        let right = self.evaluate(arena.expr_ref(expr.right))?;
         let err_handler = |e| RuntimeError::custom(&expr.op, e);
 
         let value = match expr.op.ty {
@@ -118,13 +127,16 @@ impl ExprVisitor for &mut Interpreter {
         Ok(value)
     }
 
-    fn visit_call(self, expr: &ExprCall) -> Self::T {
-        let mut this = self.new_span(expr.callee.span());
-        let callee = this.evaluate(&expr.callee)?;
+    fn visit_call(self, expr: AstRef<ExprCall>) -> Self::T {
+        let arena = expr.arena();
+
+        let callee = arena.expr_ref(expr.callee);
+        let mut this = self.new_span(callee.span());
+        let callee = this.evaluate(callee)?;
         let args = expr
             .args
             .iter()
-            .map(|arg| this.evaluate(arg))
+            .map(|arg| this.evaluate(arena.expr_ref(*arg)))
             .collect::<Result<Vec<_>, _>>()?;
 
         let callable = callee
@@ -139,21 +151,22 @@ impl ExprVisitor for &mut Interpreter {
             ));
         }
 
-        let result = callable.call(&mut this, args)?;
+        let result = callable.call(&mut this, arena, args)?;
         Ok(result)
     }
 
-    fn visit_grouping(self, expr: &ExprGrouping) -> Self::T {
-        self.evaluate(&expr.0)
+    fn visit_grouping(self, expr: AstRef<ExprGrouping>) -> Self::T {
+        self.evaluate(expr.arena().expr_ref(expr.0))
     }
 
-    fn visit_literal(self, expr: &ExprLiteral) -> Self::T {
+    fn visit_literal(self, expr: AstRef<ExprLiteral>) -> Self::T {
         Ok(expr.literal.clone())
     }
 
-    fn visit_unary(self, expr: &ExprUnary) -> Self::T {
+    fn visit_unary(self, expr: AstRef<ExprUnary>) -> Self::T {
+        let arena = expr.arena();
         let mut this = self.new_span(expr.span());
-        let right = this.evaluate(&expr.right)?;
+        let right = this.evaluate(arena.expr_ref(expr.right))?;
         let value =
             match expr.op.ty {
                 TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
@@ -166,26 +179,30 @@ impl ExprVisitor for &mut Interpreter {
         Ok(value)
     }
 
-    fn visit_variable(self, expr: &ExprVariable) -> Self::T {
+    fn visit_variable(self, expr: AstRef<ExprVariable>) -> Self::T {
         self.env
             .get(expr.name.ty.ident())
             .ok_or_else(|| RuntimeError::undefined(&expr.name))
     }
 
-    fn visit_assign(self, expr: &ExprAssign) -> Self::T {
+    fn visit_assign(self, expr: AstRef<ExprAssign>) -> Self::T {
+        let arena = expr.arena();
         let mut this = self.new_span(expr.span());
-        let value = this.evaluate(&expr.value)?;
+        let value = this.evaluate(arena.expr_ref(expr.value))?;
         this.env
             .assign(expr.name.ty.ident(), value)
             .map_err(|e| RuntimeError::custom(&expr.name, e))
     }
 
-    fn visit_logical(self, expr: &ExprLogical) -> Self::T {
+    fn visit_logical(self, expr: AstRef<ExprLogical>) -> Self::T {
+        let arena = expr.arena();
         let mut this = self.new_span(expr.span());
-        let left = this.evaluate(&expr.left)?;
+        let left = this.evaluate(arena.expr_ref(expr.left))?;
         match (&expr.op.ty, left.is_truthy()) {
             (TokenType::Or, true) | (TokenType::And, false) => Ok(left),
-            (TokenType::Or, false) | (TokenType::And, true) => this.evaluate(&expr.right),
+            (TokenType::Or, false) | (TokenType::And, true) => {
+                this.evaluate(arena.expr_ref(expr.right))
+            }
             (invalid_token, _) => unreachable!(
                 "parsing gone wrong, token of a logical expression cannot be '{invalid_token}'"
             ),
@@ -196,21 +213,24 @@ impl ExprVisitor for &mut Interpreter {
 impl StmtVisitor for &mut Interpreter {
     type T = Result<(), RuntimeError>;
 
-    fn visit_print(self, stmt: &StmtPrint) -> Self::T {
-        let value = self.evaluate(&stmt.expr)?;
+    fn visit_print(self, stmt: AstRef<StmtPrint>) -> Self::T {
+        let arena = stmt.arena();
+        let value = self.evaluate(arena.expr_ref(stmt.expr))?;
         println!("{value}");
         Ok(())
     }
 
-    fn visit_expression(self, stmt: &StmtExpression) -> Self::T {
-        self.evaluate(&stmt.expr)?;
+    fn visit_expression(self, stmt: AstRef<StmtExpression>) -> Self::T {
+        let arena = stmt.arena();
+        self.evaluate(arena.expr_ref(stmt.expr))?;
         Ok(())
     }
 
-    fn visit_var(self, stmt: &StmtVar) -> Self::T {
+    fn visit_var(self, stmt: AstRef<StmtVar>) -> Self::T {
+        let arena = stmt.arena();
         let initializer = stmt
             .initializer
-            .as_ref()
+            .map(|init| arena.expr_ref(init))
             .map(|e| self.evaluate(e))
             .transpose()?
             .unwrap_or_else(Object::nil);
@@ -219,30 +239,34 @@ impl StmtVisitor for &mut Interpreter {
         Ok(())
     }
 
-    fn visit_block(self, stmt: &StmtBlock) -> Self::T {
+    fn visit_block(self, stmt: AstRef<StmtBlock>) -> Self::T {
+        let arena = stmt.arena();
         let mut scope = self.new_env();
-        scope.execute_block(&stmt.statements)
+        scope.execute_block(stmt.statements.iter().map(|&s| arena.stmt_ref(s)))
     }
 
-    fn visit_if(self, stmt: &StmtIf) -> Self::T {
-        if self.evaluate(&stmt.condition)?.is_truthy() {
-            self.execute(&stmt.then_branch)
-        } else if let Some(else_branch) = &stmt.else_branch {
-            self.execute(else_branch)
+    fn visit_if(self, stmt: AstRef<StmtIf>) -> Self::T {
+        let arena = stmt.arena();
+
+        if self.evaluate(arena.expr_ref(stmt.condition))?.is_truthy() {
+            self.execute(arena.stmt_ref(stmt.then_branch))
+        } else if let Some(else_branch) = stmt.else_branch {
+            self.execute(arena.stmt_ref(else_branch))
         } else {
             Ok(())
         }
     }
 
-    fn visit_while(self, stmt: &StmtWhile) -> Self::T {
-        while self.evaluate(&stmt.condition)?.is_truthy() {
-            self.execute(&stmt.body)?;
+    fn visit_while(self, stmt: AstRef<StmtWhile>) -> Self::T {
+        let arena = stmt.arena();
+
+        while self.evaluate(arena.expr_ref(stmt.condition))?.is_truthy() {
+            self.execute(arena.stmt_ref(stmt.body))?;
         }
         Ok(())
     }
 
-    fn visit_function(self, stmt: &StmtFunction) -> Self::T {
-        let stmt = stmt.clone();
+    fn visit_function(self, stmt: AstRef<StmtFunction>) -> Self::T {
         self.env.define(
             stmt.name.ty().ident().into(),
             Object::new(Function::new(stmt)),
@@ -306,12 +330,12 @@ mod tests {
 
     use super::*;
 
-    fn expr(source: &str) -> Expr {
+    fn expr(source: &str, ast_arena: &mut AstArena) -> Expr {
         let tokens = Scanner::new(source)
             .scan_tokens()
             .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
             .expect("token error");
-        Parser::new(tokens)
+        Parser::new(ast_arena, tokens)
             .expression()
             .inspect_err(|e| eprintln!("{e}"))
             .expect("syntax error")
@@ -319,97 +343,108 @@ mod tests {
 
     #[test]
     fn interpret_unary_bang() -> anyhow::Result<()> {
+        let mut ast_arena = AstArena::default();
+
         let src = "!9";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert!(!*value.downcast::<bool>());
 
         let src = "!\"hello\"";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert!(!*value.downcast::<bool>());
 
         let src = "!-0";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert!(!*value.downcast::<bool>());
 
         let src = "!false";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert!(*value.downcast::<bool>());
 
         let src = "!(1 - 1)";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert!(!*value.downcast::<bool>());
+
         Ok(())
     }
 
     #[test]
     fn interpret_unary_minus() -> anyhow::Result<()> {
+        let mut ast_arena = AstArena::default();
+
         let src = "-1";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<f64>(), -1.);
 
         let src = "--1";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<f64>(), 1.);
 
         let src = "-(-1 - 2)";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<f64>(), 3.);
         Ok(())
     }
 
     #[test]
     fn interpret_unary_minus_err() -> anyhow::Result<()> {
+        let mut ast_arena = AstArena::default();
+
         let src = "-\"h\"";
-        let ast = expr(src);
+        let ast = expr(src, &mut ast_arena);
         Interpreter::new()
-            .evaluate(&ast)
+            .evaluate(ast_arena.alloc_expr(ast))
             .expect_err("can't negate strings");
         Ok(())
     }
 
     #[test]
     fn interpret_binary_plus() -> anyhow::Result<()> {
+        let mut ast_arena = AstArena::default();
+
         let src = "1 + 2";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<f64>(), 3.);
 
         let src = "\"Hello\" + \" \" + \"World!\"";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<String>(), "Hello World!");
 
         let src = "1 + -2";
-        let ast = expr(src);
-        let value = Interpreter::new().evaluate(&ast)?;
+        let ast = expr(src, &mut ast_arena);
+        let value = Interpreter::new().evaluate(ast_arena.alloc_expr(ast))?;
         assert_eq!(*value.downcast::<f64>(), -1.);
         Ok(())
     }
 
     #[test]
     fn interpret_binary_plus_err() -> anyhow::Result<()> {
+        let mut ast_arena = AstArena::default();
+
         let src = "\"h\" + 1";
-        let ast = expr(src);
+        let ast = expr(src, &mut ast_arena);
         Interpreter::new()
-            .evaluate(&ast)
+            .evaluate(ast_arena.alloc_expr(ast))
             .expect_err("can't add strings and numbers");
         Ok(())
     }
 
-    fn program(source: &str) -> Vec<Stmt> {
+    fn program(source: &str, ast_arena: &mut AstArena) -> Vec<StmtId> {
         let tokens = Scanner::new(source)
             .scan_tokens()
             .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
             .expect("token error");
-        Parser::new(tokens)
+        Parser::new(ast_arena, tokens)
             .parse()
             .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
             .expect("syntax error")
@@ -417,6 +452,8 @@ mod tests {
 
     #[test]
     fn test_examples() {
+        let mut ast_arena = AstArena::default();
+
         let lox_examples = std::fs::read_dir("./examples")
             .unwrap()
             .flatten()
@@ -425,9 +462,9 @@ mod tests {
 
         for (path, src) in lox_examples {
             let src = src.unwrap_or_else(|e| panic!("could not open example file {path:?}: {e:?}"));
-            let ast = program(&src);
+            let ast = program(&src, &mut ast_arena);
             Interpreter::new()
-                .interpret(ast)
+                .interpret(ast, &ast_arena)
                 .expect("program runs successfully");
         }
     }
