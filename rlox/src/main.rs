@@ -19,6 +19,7 @@ mod error;
 mod lexing;
 mod parsing;
 mod report;
+mod resolver;
 mod runtime;
 
 type Result<T> = ::std::result::Result<T, Error>;

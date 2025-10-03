@@ -17,5 +17,5 @@ for (var i = 0; i < 7; i = i + 1) {
 // }
 //
 // var counter = make_counter();
-// count();
-// count();
+// counter();
+// counter();

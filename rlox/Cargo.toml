@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1"
-# derive_more = "2"
+derive_more = { version = "2", features = ["from", "constructor"] }
 slotmap = "1"
-thiserror = "1"
+thiserror = "2"

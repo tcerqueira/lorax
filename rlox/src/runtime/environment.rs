@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use super::object::Object;
 
+#[derive(Debug, Clone)]
 pub struct Environment {
     stack: VecDeque<ScopedEnvironment>,
 }
@@ -57,6 +58,7 @@ impl Environment {
     }
 }
 
+#[derive(Debug, Clone)]
 struct ScopedEnvironment {
     values: HashMap<Box<str>, Object>,
 }

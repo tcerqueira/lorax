@@ -1,9 +1,11 @@
+use derive_more::From;
+
 use crate::{
     parsing::ast::{AstNode, AstRef, ExprId, StmtId},
     tokens::Token,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, From)]
 pub enum Stmt {
     Print(StmtPrint),
     Expression(StmtExpression),
@@ -67,20 +69,7 @@ pub struct StmtFunction {
 
 macro_rules! impl_stmt_node {
     ($variant:path, $type:ident) => {
-        impl $crate::parsing::ast::AstNode for $type {
-            type NodeType = Stmt;
-
-            fn deref_node(node: $crate::parsing::ast::AstRef<'_, Self>) -> &Self {
-                match &node.arena()[node.id()] {
-                    $variant(stmt) => stmt,
-                    _ => panic!(
-                        "failed to unwrap {} on {}",
-                        std::any::type_name::<Self>(),
-                        std::any::type_name::<Self::NodeType>()
-                    ),
-                }
-            }
-        }
+        $crate::impl_ast_node!(Stmt, $variant, $type);
     };
 }
 
@@ -110,53 +99,5 @@ impl From<ExprId> for StmtExpression {
 impl From<ExprId> for Stmt {
     fn from(expr: ExprId) -> Self {
         Stmt::Expression(expr.into())
-    }
-}
-
-impl From<StmtPrint> for Stmt {
-    fn from(value: StmtPrint) -> Self {
-        Stmt::Print(value)
-    }
-}
-
-impl From<StmtExpression> for Stmt {
-    fn from(value: StmtExpression) -> Self {
-        Stmt::Expression(value)
-    }
-}
-
-impl From<StmtVar> for Stmt {
-    fn from(value: StmtVar) -> Self {
-        Stmt::Var(value)
-    }
-}
-
-impl From<StmtBlock> for Stmt {
-    fn from(value: StmtBlock) -> Self {
-        Stmt::Block(value)
-    }
-}
-
-impl From<StmtIf> for Stmt {
-    fn from(value: StmtIf) -> Self {
-        Stmt::If(value)
-    }
-}
-
-impl From<StmtReturn> for Stmt {
-    fn from(value: StmtReturn) -> Self {
-        Stmt::Return(value)
-    }
-}
-
-impl From<StmtWhile> for Stmt {
-    fn from(value: StmtWhile) -> Self {
-        Stmt::While(value)
-    }
-}
-
-impl From<StmtFunction> for Stmt {
-    fn from(value: StmtFunction) -> Self {
-        Stmt::Function(value)
     }
 }

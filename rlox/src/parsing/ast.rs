@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::ops::{Deref, Index, IndexMut};
 
 use slotmap::{Key, SlotMap, new_key_type};
@@ -136,3 +137,23 @@ impl<N: AstNode> Clone for AstRef<'_, N> {
 }
 
 impl<N: AstNode> Copy for AstRef<'_, N> {}
+
+#[macro_export]
+macro_rules! impl_ast_node {
+    ($node:ident, $variant:path, $type:ident) => {
+        impl $crate::parsing::ast::AstNode for $type {
+            type NodeType = $node;
+
+            fn deref_node(node: AstRef<'_, Self>) -> &Self {
+                match &node.arena()[node.id()] {
+                    $variant(node) => node,
+                    _ => panic!(
+                        "failed to unwrap {} on {}",
+                        std::any::type_name::<Self>(),
+                        std::any::type_name::<Self::NodeType>()
+                    ),
+                }
+            }
+        }
+    };
+}

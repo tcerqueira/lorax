@@ -1,5 +1,7 @@
 use std::fmt::{self, Debug, Display};
 
+use derive_more::From;
+
 use super::visitor::ExprVisitor;
 use crate::{
     parsing::ast::{AstNode, AstRef, ExprId, ExprRef},
@@ -8,7 +10,7 @@ use crate::{
     tokens::Token,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, From)]
 pub enum Expr {
     Binary(ExprBinary),
     Call(ExprCall),
@@ -87,37 +89,24 @@ impl ExprRef<'_> {
     }
 }
 
-impl Spanned for Expr {
+impl Spanned for ExprRef<'_> {
     fn span(&self) -> Span {
-        match self {
-            Expr::Binary(e) => e.span(),
-            Expr::Call(e) => e.span(),
-            Expr::Grouping(e) => e.span(),
-            Expr::Literal(e) => e.span(),
-            Expr::Unary(e) => e.span(),
-            Expr::Variable(e) => e.span(),
-            Expr::Assign(e) => e.span(),
-            Expr::Logical(e) => e.span(),
+        match **self {
+            Expr::Binary(_) => self.cast::<ExprBinary>().span(),
+            Expr::Call(_) => self.cast::<ExprCall>().span(),
+            Expr::Grouping(_) => self.cast::<ExprGrouping>().span(),
+            Expr::Literal(_) => self.cast::<ExprLiteral>().span(),
+            Expr::Unary(_) => self.cast::<ExprUnary>().span(),
+            Expr::Variable(_) => self.cast::<ExprVariable>().span(),
+            Expr::Assign(_) => self.cast::<ExprAssign>().span(),
+            Expr::Logical(_) => self.cast::<ExprLogical>().span(),
         }
     }
 }
 
 macro_rules! impl_expr_node {
     ($variant:path, $type:ident) => {
-        impl $crate::parsing::ast::AstNode for $type {
-            type NodeType = Expr;
-
-            fn deref_node(node: AstRef<'_, Self>) -> &Self {
-                match &node.arena()[node.id()] {
-                    $variant(expr) => expr,
-                    _ => panic!(
-                        "failed to unwrap {} on {}",
-                        std::any::type_name::<Self>(),
-                        std::any::type_name::<Self::NodeType>()
-                    ),
-                }
-            }
-        }
+        $crate::impl_ast_node!(Expr, $variant, $type);
     };
 }
 
@@ -301,105 +290,58 @@ impl ExprVisitor for &mut AstPrinter<'_, '_> {
     }
 }
 
-impl Spanned for ExprBinary {
+impl Spanned for AstRef<'_, ExprBinary> {
     fn span(&self) -> Span {
-        // self.left.span().join(&self.right.span())
-        Span::default()
+        let left = ExprRef::new(self.arena(), self.left);
+        let right = ExprRef::new(self.arena(), self.right);
+        left.span().join(&right.span())
     }
 }
 
-impl Spanned for ExprUnary {
+impl Spanned for AstRef<'_, ExprUnary> {
     fn span(&self) -> Span {
-        // self.op.span.join(&self.right.span())
-        self.op.span.clone()
+        let right = ExprRef::new(self.arena(), self.right);
+        self.op.span.join(&right.span())
     }
 }
 
-impl Spanned for ExprCall {
+impl Spanned for AstRef<'_, ExprCall> {
     fn span(&self) -> Span {
-        // self.callee.span().join(&self.r_paren.span)
-        Span::default()
+        let callee = ExprRef::new(self.arena(), self.callee);
+        callee.span().join(&self.r_paren.span)
     }
 }
 
-impl Spanned for ExprGrouping {
+impl Spanned for AstRef<'_, ExprGrouping> {
     fn span(&self) -> Span {
-        // self.0.span()
-        Span::default()
+        ExprRef::new(self.arena(), self.0).span()
     }
 }
 
-impl Spanned for ExprLiteral {
+impl Spanned for AstRef<'_, ExprLiteral> {
     fn span(&self) -> Span {
         self.token.span.clone()
     }
 }
 
-impl Spanned for ExprVariable {
+impl Spanned for AstRef<'_, ExprVariable> {
     fn span(&self) -> Span {
         self.name.span.clone()
     }
 }
 
-impl Spanned for ExprAssign {
+impl Spanned for AstRef<'_, ExprAssign> {
     fn span(&self) -> Span {
-        // self.name.span.join(&self.value.span())
-        self.name.span.clone()
+        let value = ExprRef::new(self.arena(), self.value);
+        self.name.span.join(&value.span())
     }
 }
 
-impl Spanned for ExprLogical {
+impl Spanned for AstRef<'_, ExprLogical> {
     fn span(&self) -> Span {
-        // self.left.span().join(&self.right.span())
-        Span::default()
-    }
-}
-
-impl From<ExprBinary> for Expr {
-    fn from(value: ExprBinary) -> Self {
-        Self::Binary(value)
-    }
-}
-
-impl From<ExprUnary> for Expr {
-    fn from(value: ExprUnary) -> Self {
-        Self::Unary(value)
-    }
-}
-
-impl From<ExprCall> for Expr {
-    fn from(value: ExprCall) -> Self {
-        Self::Call(value)
-    }
-}
-
-impl From<ExprGrouping> for Expr {
-    fn from(value: ExprGrouping) -> Self {
-        Self::Grouping(value)
-    }
-}
-
-impl From<ExprLiteral> for Expr {
-    fn from(value: ExprLiteral) -> Self {
-        Self::Literal(value)
-    }
-}
-
-impl From<ExprVariable> for Expr {
-    fn from(value: ExprVariable) -> Self {
-        Self::Variable(value)
-    }
-}
-
-impl From<ExprAssign> for Expr {
-    fn from(value: ExprAssign) -> Self {
-        Self::Assign(value)
-    }
-}
-
-impl From<ExprLogical> for Expr {
-    fn from(value: ExprLogical) -> Self {
-        Self::Logical(value)
+        let left = ExprRef::new(self.arena(), self.left);
+        let right = ExprRef::new(self.arena(), self.right);
+        left.span().join(&right.span())
     }
 }
 
