@@ -1,28 +1,36 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use thiserror::Error;
+
+use crate::parsing::{
+    ast::{AstRef, ExprId},
+    expr::{ExprAssign, ExprVariable},
+};
 
 use super::object::Object;
 
 #[derive(Debug, Clone)]
 pub struct Environment {
-    stack: VecDeque<ScopedEnvironment>,
+    stack: Vec<ScopedEnvironment>,
+    var_resolution: HashMap<ExprId, usize>,
 }
 
 impl Environment {
     pub fn new() -> Self {
-        let mut stack = VecDeque::new();
         // global scope
-        stack.push_front(ScopedEnvironment::new());
-        Self { stack }
+        let stack = vec![ScopedEnvironment::new()];
+        Self {
+            stack,
+            var_resolution: HashMap::new(),
+        }
     }
 
     pub fn push_scope(&mut self) {
-        self.stack.push_front(ScopedEnvironment::new());
+        self.stack.push(ScopedEnvironment::new());
     }
 
     pub fn pop_scope(&mut self) {
-        self.stack.pop_front();
+        self.stack.pop();
     }
 
     pub fn define(&mut self, name: Box<str>, object: Object) {
@@ -33,27 +41,45 @@ impl Environment {
         self.global_scope().define(name, object)
     }
 
-    pub fn get(&self, name: &str) -> Option<Object> {
-        self.stack.iter().find_map(|s| s.get(name))
+    pub fn get(&self, var: AstRef<ExprVariable>) -> Option<Object> {
+        let stack_len = self.stack.len();
+        self.var_resolution.get(&var.id()).and_then(|&depth| {
+            // FIXME: recursion kinda broken, depth is not known until runtime
+            self.stack[..=stack_len - depth - 1]
+                .iter()
+                .rev()
+                .find_map(|s| s.get(&var.name.as_str()))
+        })
     }
 
-    pub fn assign(&mut self, name: &str, object: Object) -> Result<Object, EnvError> {
-        self.stack
-            .iter_mut()
-            // PERF: garbage clone
-            .find_map(|s| s.assign(name, object.clone()))
+    pub fn assign(&mut self, var: AstRef<ExprAssign>, object: Object) -> Result<Object, EnvError> {
+        let name = var.name.as_str();
+        let stack_len = self.stack.len();
+        self.var_resolution
+            .get(&var.id())
+            .and_then(|&depth| {
+                // FIXME: recursion kinda broken, depth is not known until runtime
+                self.stack[..=stack_len - depth - 1]
+                    .iter_mut()
+                    .rev()
+                    .find_map(|s| s.assign(&name, object.clone()))
+            })
             .ok_or_else(|| EnvError::UndefinedVar(name.into()))
+    }
+
+    pub fn resolve_var(&mut self, expr_id: ExprId, depth: usize) {
+        self.var_resolution.insert(expr_id, depth);
     }
 
     fn current_scope(&mut self) -> &mut ScopedEnvironment {
         self.stack
-            .front_mut()
+            .last_mut()
             .expect("must have at least the global scope")
     }
 
     fn global_scope(&mut self) -> &mut ScopedEnvironment {
         self.stack
-            .back_mut()
+            .first_mut()
             .expect("must have at least the global scope")
     }
 }

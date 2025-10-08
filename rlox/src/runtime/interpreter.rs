@@ -7,7 +7,7 @@ use super::{environment::*, object::*};
 
 use crate::{
     parsing::{
-        ast::{AstArena, AstRef, ExprRef, StmtId, StmtRef},
+        ast::{AstArena, AstRef, ExprId, ExprRef, StmtId, StmtRef},
         expr::*,
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
@@ -67,6 +67,10 @@ impl Interpreter {
 
     fn execute(&mut self, stmt: StmtRef) -> Result<(), ControlFlow> {
         stmt.accept(self)
+    }
+
+    pub(crate) fn resolve(&mut self, expr_id: ExprId, depth: usize) {
+        self.env.resolve_var(expr_id, depth);
     }
 
     pub(super) fn execute_block<'a>(
@@ -193,7 +197,7 @@ impl ExprVisitor for &mut Interpreter {
 
     fn visit_variable(self, expr: AstRef<ExprVariable>) -> Self::T {
         self.env
-            .get(expr.name.ty.ident())
+            .get(expr)
             .ok_or_else(|| RuntimeError::undefined(&expr.name))
     }
 
@@ -202,7 +206,7 @@ impl ExprVisitor for &mut Interpreter {
         let mut this = self.new_span(expr.span());
         let value = this.evaluate(arena.expr_ref(expr.value))?;
         this.env
-            .assign(expr.name.ty.ident(), value)
+            .assign(expr, value)
             .map_err(|e| RuntimeError::with_token(&expr.name, e))
     }
 
@@ -247,7 +251,7 @@ impl StmtVisitor for &mut Interpreter {
             .transpose()?
             .unwrap_or_else(Object::nil);
 
-        self.env.define(stmt.ident.ty.ident().into(), initializer);
+        self.env.define(stmt.ident.as_str().into(), initializer);
         Ok(())
     }
 
@@ -289,10 +293,8 @@ impl StmtVisitor for &mut Interpreter {
     }
 
     fn visit_function(self, stmt: AstRef<StmtFunction>) -> Self::T {
-        self.env.define(
-            stmt.name.ty().ident().into(),
-            Object::new(Function::new(stmt)),
-        );
+        self.env
+            .define(stmt.name.as_str().into(), Object::new(Function::new(stmt)));
         Ok(())
     }
 }
@@ -348,7 +350,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexing::Scanner, parsing::Parser};
+    use crate::{lexing::Scanner, parsing::Parser, passes::resolver::Resolver};
 
     use super::*;
 
@@ -485,7 +487,13 @@ mod tests {
         for (path, src) in lox_examples {
             let src = src.unwrap_or_else(|e| panic!("could not open example file {path:?}: {e:?}"));
             let ast = program(&src, &mut ast_arena);
-            Interpreter::new()
+
+            let mut interpreter = Interpreter::new();
+            Resolver::new(&mut interpreter, &ast_arena)
+                .resolve_stmts(&ast)
+                .expect("resolver failed to resolve");
+
+            interpreter
                 .interpret(ast, &ast_arena)
                 .expect("program runs successfully");
         }

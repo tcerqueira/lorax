@@ -13,13 +13,13 @@ use parsing::*;
 use report::*;
 use runtime::*;
 
-use crate::parsing::ast::AstArena;
+use crate::{parsing::ast::AstArena, passes::resolver::Resolver};
 
 mod error;
 mod lexing;
 mod parsing;
+mod passes;
 mod report;
-mod resolver;
 mod runtime;
 
 type Result<T> = ::std::result::Result<T, Error>;
@@ -73,6 +73,9 @@ fn run(
         .parse()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
+    let mut resolver = Resolver::new(interpreter, ast_arena);
+    resolver.resolve_stmts(&program)?;
+
     interpreter
         .interpret(program, ast_arena)
         .inspect_err(|e| reporter.report(e))?;
@@ -84,7 +87,7 @@ impl Termination for Error {
     fn report(self) -> ExitCode {
         match self {
             Error::Cli => ExitCode::from(64),
-            Error::Parsing { .. } | Error::Lexing(_) => ExitCode::from(65),
+            Error::Parsing { .. } | Error::Lexing(_) | Error::Resolver(_) => ExitCode::from(65),
             Error::Runtime(_) => ExitCode::from(70),
             Error::Other(_) => ExitCode::FAILURE,
         }

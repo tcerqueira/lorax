@@ -1,7 +1,8 @@
 use thiserror::Error;
 
 use crate::{
-    lexing::error::LexingError, parsing::error::ParsingError, runtime::error::RuntimeError,
+    lexing::error::LexingError, parsing::error::ParsingError, passes::resolver::ResolverError,
+    runtime::error::RuntimeError,
 };
 
 #[derive(Debug, Error)]
@@ -12,6 +13,8 @@ pub enum Error {
     Lexing(Vec<LexingError>),
     #[error("{n} errors:\n{list}", n = .0.len(), list = display_error_list(.0))]
     Parsing(Vec<ParsingError>),
+    #[error(transparent)]
+    Resolver(#[from] ResolverError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
     #[error(transparent)]

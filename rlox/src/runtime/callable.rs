@@ -64,7 +64,7 @@ pub struct Function {
 
 impl Function {
     pub fn new(decl: AstRef<StmtFunction>) -> Self {
-        let name = decl.name.ty().ident().into();
+        let name = decl.name.as_str().into();
         let arity = decl.params.len().try_into().expect("arity always < 256");
         let decl = decl.id();
         Self { decl, name, arity }
@@ -90,7 +90,7 @@ impl ObjCallable for Function {
         let decl = arena.stmt_ref(self.decl).cast::<StmtFunction>();
 
         for (param, arg) in std::iter::zip(&decl.params, args) {
-            interpreter.env.define(param.ty().ident().into(), arg);
+            interpreter.env.define(param.as_str().into(), arg);
         }
         match interpreter.execute_block(decl.body.iter().map(|&s| arena.stmt_ref(s))) {
             Ok(_) => Ok(Object::nil()),

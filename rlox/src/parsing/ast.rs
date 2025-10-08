@@ -112,15 +112,15 @@ impl<'a, N: AstNode<NodeType = N> + IdType> AstRef<'a, N> {
     }
 }
 
-impl<'a, N: AstNode> Deref for AstRef<'a, N> {
+impl<'a, N: AstNode + 'a> Deref for AstRef<'a, N> {
     type Target = N;
 
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &'a Self::Target {
         N::deref_node(*self)
     }
 }
 
-impl<'a, T, N: AstNode> AsRef<T> for AstRef<'a, N>
+impl<'a, T, N: AstNode + 'a> AsRef<T> for AstRef<'a, N>
 where
     T: ?Sized,
     <AstRef<'a, N> as Deref>::Target: AsRef<T>,

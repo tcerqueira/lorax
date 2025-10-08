@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
 
 use crate::report::{Span, Spanned};
 
@@ -51,11 +51,55 @@ pub enum TokenType {
 }
 
 impl TokenType {
-    pub fn ident(&self) -> &str {
-        let TokenType::Identifier(ident) = self else {
-            panic!("token is not an Identifier")
-        };
-        ident
+    pub fn as_str(&self) -> Cow<'_, str> {
+        match self {
+            TokenType::LeftParen => "(",
+            TokenType::RightParen => ")",
+            TokenType::LeftBrace => "{{",
+            TokenType::RightBrace => "}}",
+            TokenType::Comma => ",",
+            TokenType::Dot => ".",
+            TokenType::Minus => "-",
+            TokenType::Plus => "+",
+            TokenType::Semicolon => ";",
+            TokenType::Slash => "/",
+            TokenType::Star => "*",
+            TokenType::Bang => "!",
+            TokenType::BangEqual => "!=",
+            TokenType::Equal => "=",
+            TokenType::EqualEqual => "==",
+            TokenType::Greater => ">",
+            TokenType::GreaterEqual => ">=",
+            TokenType::Less => "<",
+            TokenType::LessEqual => "<=",
+            TokenType::Identifier(ident) => ident.as_ref(),
+            TokenType::And => "and",
+            TokenType::Class => "class",
+            TokenType::Else => "else",
+            TokenType::False => "false",
+            TokenType::Fun => "fun",
+            TokenType::For => "for",
+            TokenType::If => "if",
+            TokenType::Nil => "nil",
+            TokenType::Or => "or",
+            TokenType::Print => "print",
+            TokenType::Return => "return",
+            TokenType::Super => "super",
+            TokenType::This => "this",
+            TokenType::True => "true",
+            TokenType::Var => "var",
+            TokenType::While => "while",
+            TokenType::Eof => "end of file",
+            non_static => {
+                return match non_static {
+                    TokenType::Number(n) => n.to_string(),
+                    TokenType::String(s) => format!("\"{s}\""),
+                    _ => panic!("token type not matched"),
+                }
+                .into();
+            }
+        }
+        .into()
     }
 }
 
@@ -69,6 +113,10 @@ impl Token {
     pub fn ty(&self) -> &TokenType {
         &self.ty
     }
+
+    pub fn as_str(&self) -> Cow<'_, str> {
+        self.ty().as_str()
+    }
 }
 
 impl Spanned for Token {
@@ -79,47 +127,7 @@ impl Spanned for Token {
 
 impl Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TokenType::LeftParen => write!(f, "("),
-            TokenType::RightParen => write!(f, ")"),
-            TokenType::LeftBrace => write!(f, "{{"),
-            TokenType::RightBrace => write!(f, "}}"),
-            TokenType::Comma => write!(f, ","),
-            TokenType::Dot => write!(f, "."),
-            TokenType::Minus => write!(f, "-"),
-            TokenType::Plus => write!(f, "+"),
-            TokenType::Semicolon => write!(f, ";"),
-            TokenType::Slash => write!(f, "/"),
-            TokenType::Star => write!(f, "*"),
-            TokenType::Bang => write!(f, "!"),
-            TokenType::BangEqual => write!(f, "!="),
-            TokenType::Equal => write!(f, "="),
-            TokenType::EqualEqual => write!(f, "=="),
-            TokenType::Greater => write!(f, ">"),
-            TokenType::GreaterEqual => write!(f, ">="),
-            TokenType::Less => write!(f, "<"),
-            TokenType::LessEqual => write!(f, "<="),
-            TokenType::Identifier(ident) => write!(f, "{ident}"),
-            TokenType::String(s) => write!(f, "\"{s}\""),
-            TokenType::Number(num) => write!(f, "{num}"),
-            TokenType::And => write!(f, "and"),
-            TokenType::Class => write!(f, "class"),
-            TokenType::Else => write!(f, "else"),
-            TokenType::False => write!(f, "false"),
-            TokenType::Fun => write!(f, "fun"),
-            TokenType::For => write!(f, "for"),
-            TokenType::If => write!(f, "if"),
-            TokenType::Nil => write!(f, "nil"),
-            TokenType::Or => write!(f, "or"),
-            TokenType::Print => write!(f, "print"),
-            TokenType::Return => write!(f, "return"),
-            TokenType::Super => write!(f, "super"),
-            TokenType::This => write!(f, "this"),
-            TokenType::True => write!(f, "true"),
-            TokenType::Var => write!(f, "var"),
-            TokenType::While => write!(f, "while"),
-            TokenType::Eof => write!(f, "end of file"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
