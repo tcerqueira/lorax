@@ -1,3 +1,5 @@
+use std::process::{ExitCode, Termination};
+
 use thiserror::Error;
 
 use crate::{
@@ -19,6 +21,17 @@ pub enum Error {
     Runtime(#[from] RuntimeError),
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+impl Termination for Error {
+    fn report(self) -> ExitCode {
+        match self {
+            Error::Cli => ExitCode::from(64),
+            Error::Parsing { .. } | Error::Lexing(_) | Error::Resolver(_) => ExitCode::from(65),
+            Error::Runtime(_) => ExitCode::from(70),
+            Error::Other(_) => ExitCode::FAILURE,
+        }
+    }
 }
 
 fn display_error_list(errors: &[impl ToString]) -> String {

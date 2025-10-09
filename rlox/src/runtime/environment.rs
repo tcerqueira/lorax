@@ -2,27 +2,18 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::parsing::{
-    ast::{AstRef, ExprId},
-    expr::{ExprAssign, ExprVariable},
-};
-
 use super::object::Object;
 
 #[derive(Debug, Clone)]
 pub struct Environment {
     stack: Vec<ScopedEnvironment>,
-    var_resolution: HashMap<ExprId, usize>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         // global scope
         let stack = vec![ScopedEnvironment::new()];
-        Self {
-            stack,
-            var_resolution: HashMap::new(),
-        }
+        Self { stack }
     }
 
     pub fn push_scope(&mut self) {
@@ -41,34 +32,39 @@ impl Environment {
         self.global_scope().define(name, object)
     }
 
-    pub fn get(&self, var: AstRef<ExprVariable>) -> Option<Object> {
+    pub fn get_at(&self, depth: usize, name: &str) -> Option<Object> {
         let stack_len = self.stack.len();
-        self.var_resolution.get(&var.id()).and_then(|&depth| {
-            // FIXME: recursion kinda broken, depth is not known until runtime
-            self.stack[..=stack_len - depth - 1]
-                .iter()
-                .rev()
-                .find_map(|s| s.get(&var.name.as_str()))
-        })
+        self.stack
+            .get(stack_len - depth - 1)
+            .iter()
+            .find_map(|s| s.get(name))
     }
 
-    pub fn assign(&mut self, var: AstRef<ExprAssign>, object: Object) -> Result<Object, EnvError> {
-        let name = var.name.as_str();
+    pub fn get(&self, name: &str) -> Option<Object> {
+        self.stack.iter().rev().find_map(|s| s.get(name))
+    }
+
+    pub fn assign_at(
+        &mut self,
+        depth: usize,
+        name: &str,
+        object: Object,
+    ) -> Result<Object, EnvError> {
         let stack_len = self.stack.len();
-        self.var_resolution
-            .get(&var.id())
-            .and_then(|&depth| {
-                // FIXME: recursion kinda broken, depth is not known until runtime
-                self.stack[..=stack_len - depth - 1]
-                    .iter_mut()
-                    .rev()
-                    .find_map(|s| s.assign(&name, object.clone()))
-            })
+        self.stack
+            .get_mut(stack_len - depth - 1)
+            .iter_mut()
+            .find_map(|s| s.assign(name, object.clone()))
             .ok_or_else(|| EnvError::UndefinedVar(name.into()))
     }
 
-    pub fn resolve_var(&mut self, expr_id: ExprId, depth: usize) {
-        self.var_resolution.insert(expr_id, depth);
+    pub fn assign(&mut self, name: &str, object: Object) -> Result<Object, EnvError> {
+        self.stack
+            .iter_mut()
+            .rev()
+            // PERF: garbage clone
+            .find_map(|s| s.assign(name, object.clone()))
+            .ok_or_else(|| EnvError::UndefinedVar(name.into()))
     }
 
     fn current_scope(&mut self) -> &mut ScopedEnvironment {

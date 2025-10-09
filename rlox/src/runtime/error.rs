@@ -16,7 +16,6 @@ pub struct RuntimeError {
 }
 
 impl RuntimeError {
-    #[expect(dead_code)]
     pub fn custom(spanned: impl Spanned, message: impl Display) -> Self {
         Self {
             span: spanned.span(),

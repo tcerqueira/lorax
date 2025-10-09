@@ -24,7 +24,6 @@ impl ParsingError {
         }
     }
 
-    #[expect(dead_code)]
     pub fn custom_no_sync(token: &Token, message: impl Display) -> Self {
         Self {
             span: token.span().clone(),

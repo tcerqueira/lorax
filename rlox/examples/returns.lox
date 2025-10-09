@@ -1,21 +1,6 @@
-fun fib(n) {
-    if (n <= 1) return n;
-    return fib(n - 2) + fib(n - 1);
+fun div(n, d) {
+    if (d == 0) return 0;
+    return n / d;
 }
-for (var i = 0; i < 7; i = i + 1) {
-    print fib(i);
-}
-
-// fun make_counter() {
-//     var i = 0;
-//     fun count() {
-//         i = i + 1;
-//         print i;
-//     }
-//
-//     return count;
-// }
-//
-// var counter = make_counter();
-// counter();
-// counter();
+print div(2, 0);
+print div(10, 5);

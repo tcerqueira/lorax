@@ -2,7 +2,6 @@ use thiserror::Error;
 
 use crate::runtime::{error::RuntimeError, object::Object};
 
-#[expect(dead_code)]
 #[derive(Debug, Error)]
 pub enum ControlFlow {
     #[error(transparent)]

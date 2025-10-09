@@ -39,9 +39,8 @@ impl<'i, 'a> Resolver<'i, 'a> {
         stmt.accept(self)
     }
 
-    pub fn resolve_stmts(&mut self, stmts: &[StmtId]) -> Result<(), ResolverError> {
-        for stmt_id in stmts {
-            let stmt = self.ast_arena.stmt_ref(*stmt_id);
+    pub fn resolve(&mut self, stmts: &[StmtId]) -> Result<(), ResolverError> {
+        for stmt in stmts.iter().map(|&id| self.ast_arena.stmt_ref(id)) {
             stmt.accept(&mut *self)?;
         }
         Ok(())
@@ -51,13 +50,15 @@ impl<'i, 'a> Resolver<'i, 'a> {
         let depth = self
             .scope_stack
             .iter()
-            .rev()
             .enumerate()
+            .rev()
             .find(|(_i, scope)| scope.contains(name))
-            .map(|(i, _s)| i)
-            .unwrap_or(self.scope_stack.len() - 1);
+            .map(|(i, _s)| i);
 
-        self.interpreter.resolve(expr_id, depth);
+        if let Some(depth) = depth {
+            self.interpreter
+                .resolve_var(expr_id, self.scope_stack.len() - 1 - depth);
+        }
         Ok(())
     }
 
@@ -66,7 +67,7 @@ impl<'i, 'a> Resolver<'i, 'a> {
         for stmt in &stmt_fn.params {
             self.define(stmt.as_str().into());
         }
-        self.resolve_stmts(&stmt_fn.body)?;
+        self.resolve(&stmt_fn.body)?;
         self.end_scope();
         Ok(())
     }
@@ -109,7 +110,7 @@ impl StmtVisitor for &mut Resolver<'_, '_> {
 
     fn visit_block(self, stmt: AstRef<StmtBlock>) -> Self::T {
         self.begin_scope();
-        self.resolve_stmts(&stmt.statements)?;
+        self.resolve(&stmt.statements)?;
         self.end_scope();
         Ok(())
     }

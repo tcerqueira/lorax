@@ -4,3 +4,7 @@ print x + y;
 
 var huh;
 print huh;
+
+var a = "first";
+var a = a + " second";
+print a;

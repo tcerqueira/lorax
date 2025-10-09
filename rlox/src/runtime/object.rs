@@ -40,6 +40,7 @@ impl<T: Display> ObjDisplay for T {
     }
 }
 
+#[expect(dead_code)]
 pub trait Nil {
     fn is_nil(&self) -> bool;
 }

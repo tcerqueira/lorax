@@ -19,7 +19,6 @@ pub enum Stmt {
 
 #[derive(Debug, Clone)]
 pub struct StmtPrint {
-    #[expect(dead_code)]
     pub print_token: Token,
     pub expr: ExprId,
 }
@@ -49,7 +48,6 @@ pub struct StmtIf {
 
 #[derive(Debug, Clone)]
 pub struct StmtReturn {
-    #[expect(dead_code)]
     pub return_token: Token,
     pub expr: Option<ExprId>,
 }

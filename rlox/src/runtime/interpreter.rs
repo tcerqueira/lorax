@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     ops::{Deref, DerefMut},
 };
 
@@ -24,6 +24,13 @@ use crate::{
 pub struct Interpreter {
     pub(super) env: Environment,
     pub(super) span_stack: VecDeque<Span>,
+    locals: HashMap<ExprId, usize>,
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Interpreter::new()
+    }
 }
 
 impl Interpreter {
@@ -31,6 +38,7 @@ impl Interpreter {
         let mut this = Self {
             env: Environment::new(),
             span_stack: vec![Span::default()].into(),
+            locals: HashMap::new(),
         };
         this.define_builtins();
 
@@ -69,8 +77,15 @@ impl Interpreter {
         stmt.accept(self)
     }
 
-    pub(crate) fn resolve(&mut self, expr_id: ExprId, depth: usize) {
-        self.env.resolve_var(expr_id, depth);
+    pub fn resolve_var(&mut self, expr_id: ExprId, depth: usize) {
+        self.locals.insert(expr_id, depth);
+    }
+
+    fn lookup_var(&self, name: &str, expr_id: ExprId) -> Option<Object> {
+        match self.locals.get(&expr_id) {
+            Some(depth) => self.env.get_at(*depth, name),
+            None => self.env.get(name),
+        }
     }
 
     pub(super) fn execute_block<'a>(
@@ -147,9 +162,9 @@ impl ExprVisitor for &mut Interpreter {
     fn visit_call(self, expr: AstRef<ExprCall>) -> Self::T {
         let arena = expr.arena();
 
-        let callee = arena.expr_ref(expr.callee);
-        let mut this = self.new_span(callee.span());
-        let callee = this.evaluate(callee)?;
+        let callee_expr = arena.expr_ref(expr.callee);
+        let mut this = self.new_span(callee_expr.span());
+        let callee = this.evaluate(callee_expr)?;
         let args = expr
             .args
             .iter()
@@ -196,8 +211,7 @@ impl ExprVisitor for &mut Interpreter {
     }
 
     fn visit_variable(self, expr: AstRef<ExprVariable>) -> Self::T {
-        self.env
-            .get(expr)
+        self.lookup_var(&expr.name.as_str(), expr.id())
             .ok_or_else(|| RuntimeError::undefined(&expr.name))
     }
 
@@ -205,9 +219,13 @@ impl ExprVisitor for &mut Interpreter {
         let arena = expr.arena();
         let mut this = self.new_span(expr.span());
         let value = this.evaluate(arena.expr_ref(expr.value))?;
-        this.env
-            .assign(expr, value)
-            .map_err(|e| RuntimeError::with_token(&expr.name, e))
+        let name = expr.name.as_str();
+
+        match this.locals.get(&expr.id()).copied() {
+            Some(depth) => this.env.assign_at(depth, &name, value),
+            None => this.env.assign(&name, value),
+        }
+        .map_err(|e| RuntimeError::with_token(&expr.name, e))
     }
 
     fn visit_logical(self, expr: AstRef<ExprLogical>) -> Self::T {
@@ -490,7 +508,7 @@ mod tests {
 
             let mut interpreter = Interpreter::new();
             Resolver::new(&mut interpreter, &ast_arena)
-                .resolve_stmts(&ast)
+                .resolve(&ast)
                 .expect("resolver failed to resolve");
 
             interpreter
