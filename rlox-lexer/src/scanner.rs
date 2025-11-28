@@ -351,7 +351,7 @@ mod tests {
 
         assert!(tokens_eq(
             &tokens,
-            &vec![
+            &[
                 tok![n: 1234567890],
                 tok![n: 0.123],
                 tok![n: 123.0],
@@ -369,7 +369,7 @@ mod tests {
 
         assert!(tokens_eq(
             &tokens,
-            &vec![
+            &[
                 tok![id: "_hello123world"],
                 tok![id: "_and2"],
                 tok![id: "or_"],
