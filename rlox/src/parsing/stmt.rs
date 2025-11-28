@@ -1,9 +1,7 @@
 use derive_more::From;
+use rlox_lexer::tokens::Token;
 
-use crate::{
-    parsing::ast::{AstNode, AstRef, ExprId, StmtId},
-    tokens::Token,
-};
+use crate::parsing::ast::{AstNode, AstRef, ExprId, StmtId};
 
 #[derive(Debug, Clone, From)]
 pub enum Stmt {

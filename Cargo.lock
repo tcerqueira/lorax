@@ -52,9 +52,23 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "derive_more",
+ "rlox-lexer",
+ "rlox-report",
  "slotmap",
  "thiserror",
 ]
+
+[[package]]
+name = "rlox-lexer"
+version = "0.1.0"
+dependencies = [
+ "rlox-report",
+ "thiserror",
+]
+
+[[package]]
+name = "rlox-report"
+version = "0.1.0"
 
 [[package]]
 name = "slotmap"

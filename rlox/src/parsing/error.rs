@@ -2,10 +2,8 @@ use std::fmt::Display;
 
 use thiserror::Error;
 
-use crate::{
-    lexing::tokens::Token,
-    report::{Report, Span, Spanned},
-};
+use rlox_lexer::tokens::Token;
+use rlox_report::{Report, Span, Spanned};
 
 #[derive(Debug, Error)]
 #[error("[line {}:{}] {message}", .span.line_start, .span.start)]

@@ -5,20 +5,18 @@ use std::{
 };
 
 use anyhow::Context;
+use rlox_lexer::Scanner;
+use rlox_report::Reporter;
 
 use crate::error::*;
-use crate::lexing::*;
 use crate::parsing::*;
-use crate::report::*;
 use crate::runtime::*;
 
 use crate::{parsing::ast::AstArena, passes::resolver::Resolver};
 
 pub mod error;
-mod lexing;
 mod parsing;
 mod passes;
-mod report;
 mod runtime;
 
 pub type Result<T> = ::std::result::Result<T, Error>;

@@ -3,6 +3,9 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use rlox_lexer::tokens::TokenType;
+use rlox_report::{Span, Spanned};
+
 use super::{environment::*, object::*};
 
 use crate::{
@@ -12,13 +15,11 @@ use crate::{
         stmt::*,
         visitor::{ExprVisitor, StmtVisitor},
     },
-    report::{Span, Spanned},
     runtime::{
         callable::{Function, NativeFunction},
         control_flow::ControlFlow,
         error::RuntimeError,
     },
-    tokens::TokenType,
 };
 
 pub struct Interpreter {
@@ -370,7 +371,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexing::Scanner, parsing::Parser, passes::resolver::Resolver};
+    use crate::{parsing::Parser, passes::resolver::Resolver};
+    use rlox_lexer::Scanner;
 
     use super::*;
 

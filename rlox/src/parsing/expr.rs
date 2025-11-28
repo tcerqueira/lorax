@@ -1,13 +1,13 @@
 use std::fmt::{self, Debug, Display};
 
 use derive_more::From;
+use rlox_lexer::tokens::Token;
+use rlox_report::{Span, Spanned};
 
 use super::visitor::ExprVisitor;
 use crate::{
     parsing::ast::{AstNode, AstRef, ExprId, ExprRef},
-    report::{Span, Spanned},
     runtime::object::Object,
-    tokens::Token,
 };
 
 #[derive(Debug, Clone, PartialEq, From)]
@@ -347,8 +347,10 @@ impl Spanned for AstRef<'_, ExprLogical> {
 
 #[cfg(test)]
 mod tests {
+    use rlox_lexer::tok;
+
     use super::*;
-    use crate::{parsing::ast::AstArena, tok};
+    use crate::parsing::ast::AstArena;
 
     #[test]
     fn test_printer() {

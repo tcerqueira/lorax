@@ -104,10 +104,6 @@ impl ObjCallable for Function {
             let mut interpreter = interpreter.new_env();
             let decl = arena.stmt_ref(self.decl).cast::<StmtFunction>();
 
-            // recursive hack, redefine function inside function body
-            // interpreter
-            //     .env
-            //     .define(self.name.clone(), Object::new(self.clone()));
             for (param, arg) in std::iter::zip(&decl.params, args) {
                 interpreter.env.define(param.as_str().into(), arg);
             }

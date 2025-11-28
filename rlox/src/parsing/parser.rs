@@ -1,10 +1,11 @@
 use std::{collections::VecDeque, fmt::Display};
 
+use rlox_lexer::tokens::*;
+
 use super::{error::ParsingError, expr::*, stmt::*};
 use crate::{
     parsing::ast::{AstArena, ExprId, StmtId},
     runtime::object::Object,
-    tokens::*,
 };
 
 // program          => declaration* EOF ;
@@ -62,13 +63,13 @@ pub struct Parser<'a> {
 #[macro_export]
 macro_rules! tt_pat {
     ($bind:ident @ $pat:pat) => {
-        $bind @ $crate::lexing::tokens::Token {
+        $bind @ rlox_lexer::tokens::Token {
             ty: $pat,
             ..
         }
     };
     [$pat:pat] => {
-        $crate::lexing::tokens::Token {
+        rlox_lexer::tokens::Token {
             ty: $pat,
             ..
         }
@@ -611,7 +612,7 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexing::Scanner;
+    use rlox_lexer::Scanner;
 
     #[test]
     fn parse_grouping() {

@@ -1,10 +1,10 @@
 use std::process::{ExitCode, Termination};
 
+use rlox_lexer::error::LexingError;
 use thiserror::Error;
 
 use crate::{
-    lexing::error::LexingError, parsing::error::ParsingError, passes::resolver::ResolverError,
-    runtime::error::RuntimeError,
+    parsing::error::ParsingError, passes::resolver::ResolverError, runtime::error::RuntimeError,
 };
 
 #[derive(Debug, Error)]

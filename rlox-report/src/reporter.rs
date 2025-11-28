@@ -1,4 +1,4 @@
-use crate::report::Spanned;
+use crate::Spanned;
 
 pub trait Report: Spanned {
     fn report(&self, source: &str);

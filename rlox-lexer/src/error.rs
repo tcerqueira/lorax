@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::report::{Report, Span, Spanned};
+use rlox_report::{Report, Span, Spanned};
 
 #[derive(Debug, Error)]
 #[error("[line {}:{}] {}", (.span).line_start, .span.start, .message)]
