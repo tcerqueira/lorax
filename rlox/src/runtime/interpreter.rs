@@ -125,7 +125,7 @@ impl Interpreter {
                     std::time::UNIX_EPOCH
                         .elapsed()
                         .expect("couldn't get system time")
-                        .as_millis(),
+                        .as_millis() as f64,
                 ))
             })),
         );
