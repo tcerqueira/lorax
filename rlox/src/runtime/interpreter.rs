@@ -500,7 +500,7 @@ mod tests {
     fn test_examples() {
         let mut ast_arena = AstArena::default();
 
-        let lox_examples = std::fs::read_dir("./examples")
+        let lox_examples = std::fs::read_dir("../examples")
             .unwrap()
             .flatten()
             .filter(|f| f.file_name().into_string().unwrap().ends_with(".lox"))
