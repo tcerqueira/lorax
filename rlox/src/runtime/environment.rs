@@ -1,27 +1,35 @@
-use std::collections::HashMap;
+use std::{cell::RefMut, collections::HashMap};
 
 use thiserror::Error;
+
+use crate::runtime::chain::{Chain, SharedNode};
 
 use super::object::Object;
 
 #[derive(Debug, Clone)]
 pub struct Environment {
-    stack: Vec<ScopedEnvironment>,
+    chain: Chain<ScopedEnvironment>,
+    global: SharedNode<ScopedEnvironment>,
 }
 
 impl Environment {
     pub fn new() -> Self {
+        let mut chain = Chain::new();
         // global scope
-        let stack = vec![ScopedEnvironment::new()];
-        Self { stack }
+        chain.push(ScopedEnvironment::new());
+        Self {
+            // stack,
+            global: chain.head_node().unwrap().clone(),
+            chain,
+        }
     }
 
     pub fn push_scope(&mut self) {
-        self.stack.push(ScopedEnvironment::new());
+        self.chain.push(ScopedEnvironment::new());
     }
 
     pub fn pop_scope(&mut self) {
-        self.stack.pop();
+        self.chain.pop();
     }
 
     pub fn define(&mut self, name: Box<str>, object: Object) {
@@ -33,15 +41,15 @@ impl Environment {
     }
 
     pub fn get_at(&self, depth: usize, name: &str) -> Option<Object> {
-        let stack_len = self.stack.len();
-        self.stack
-            .get(stack_len - depth - 1)
+        self.chain
+            .iter()
+            .nth(depth)
             .iter()
             .find_map(|s| s.get(name))
     }
 
     pub fn get(&self, name: &str) -> Option<Object> {
-        self.stack.iter().rev().find_map(|s| s.get(name))
+        self.chain.iter().find_map(|s| s.get(name))
     }
 
     pub fn assign_at(
@@ -50,33 +58,29 @@ impl Environment {
         name: &str,
         object: Object,
     ) -> Result<Object, EnvError> {
-        let stack_len = self.stack.len();
-        self.stack
-            .get_mut(stack_len - depth - 1)
-            .iter_mut()
-            .find_map(|s| s.assign(name, object.clone()))
+        self.chain
+            .iter()
+            .nth(depth)
+            .and_then(|mut s| s.assign(name, object.clone()))
             .ok_or_else(|| EnvError::UndefinedVar(name.into()))
     }
 
     pub fn assign(&mut self, name: &str, object: Object) -> Result<Object, EnvError> {
-        self.stack
-            .iter_mut()
-            .rev()
+        self.chain
+            .iter()
             // PERF: garbage clone
-            .find_map(|s| s.assign(name, object.clone()))
+            .find_map(|mut s| s.assign(name, object.clone()))
             .ok_or_else(|| EnvError::UndefinedVar(name.into()))
     }
 
-    fn current_scope(&mut self) -> &mut ScopedEnvironment {
-        self.stack
-            .last_mut()
+    fn current_scope(&mut self) -> RefMut<'_, ScopedEnvironment> {
+        self.chain
+            .head()
             .expect("must have at least the global scope")
     }
 
-    fn global_scope(&mut self) -> &mut ScopedEnvironment {
-        self.stack
-            .first_mut()
-            .expect("must have at least the global scope")
+    fn global_scope(&mut self) -> RefMut<'_, ScopedEnvironment> {
+        self.global.value()
     }
 }
 

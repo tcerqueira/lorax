@@ -311,8 +311,10 @@ impl StmtVisitor for &mut Interpreter {
     }
 
     fn visit_function(self, stmt: AstRef<StmtFunction>) -> Self::T {
-        self.env
-            .define(stmt.name.as_str().into(), Object::new(Function::new(stmt)));
+        self.env.define(
+            stmt.name.as_str().into(),
+            Object::new(Function::new(stmt, self.env.clone())),
+        );
         Ok(())
     }
 }
