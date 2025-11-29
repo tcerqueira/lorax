@@ -1,6 +1,8 @@
-use std::fmt;
+use std::{fmt, io::Cursor};
 
-use crate::chunk::{Chunk, OpCode};
+use crate::chunk::Chunk;
+use crate::enconding::OpDecoder;
+use crate::opcode::OpCode;
 
 pub struct Disassembler<'a, 'f> {
     f: &'a mut fmt::Formatter<'f>,
@@ -14,15 +16,19 @@ impl<'a, 'f> Disassembler<'a, 'f> {
     }
 
     pub fn disassemble_chunk(&mut self) -> fmt::Result {
+        let mut decoder = Cursor::new(self.chunk.code.get_ref());
+
         writeln!(self.f, "{:<6}== {} ==", "", self.name)?;
-        for (offset, instruction) in self.chunk.code.iter().enumerate() {
-            self.disassemble_instruction(offset, *instruction)?;
+        let mut offset = decoder.position();
+        while let Ok(instruction) = decoder.decode_op::<OpCode>() {
+            self.disassemble_instruction(offset, instruction)?;
+            offset = decoder.position();
             writeln!(self.f)?;
         }
         Ok(())
     }
 
-    pub fn disassemble_instruction(&mut self, offset: usize, opcode: OpCode) -> fmt::Result {
+    pub fn disassemble_instruction(&mut self, offset: u64, opcode: OpCode) -> fmt::Result {
         write!(self.f, "{offset:04} | {opcode:<10?}")
     }
 }

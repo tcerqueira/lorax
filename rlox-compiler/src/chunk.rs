@@ -1,29 +1,20 @@
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    io::Cursor,
+};
 
-use crate::debug::Disassembler;
-
-#[derive(Clone, Copy)]
-#[repr(u8)]
-pub enum OpCode {
-    OpReturn,
-}
-
-impl Debug for OpCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OpCode::OpReturn => f.write_str("OP_RETURN"),
-        }
-    }
-}
+use crate::{debug::Disassembler, enconding::OpEncoder, opcode::OpCode};
 
 #[derive(Default)]
 pub struct Chunk {
-    pub(crate) code: Vec<OpCode>,
+    pub(crate) code: Cursor<Vec<u8>>,
 }
 
 impl Chunk {
     pub fn write(&mut self, instruction: OpCode) {
-        self.code.push(instruction);
+        self.code
+            .encode_op(&instruction)
+            .expect("what could go wrong :)");
     }
 }
 
