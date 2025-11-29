@@ -5,13 +5,57 @@ use std::{
 
 use thiserror::Error;
 
-use crate::enconding::{Decode, Encode};
+use crate::{
+    chunk::Chunk,
+    enconding::{Decode, Encode},
+    value::Addr,
+};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum OpCode {
     NoOp = 0x00,
     OpReturn = 0x01,
+    OpConstant(Addr) = 0x02,
+}
+
+impl Decode for OpCode {
+    type Err = OpDecodeError;
+
+    fn decode(buf: &[u8]) -> Result<(Self, usize), Self::Err> {
+        debug_assert!(!buf.is_empty());
+
+        match (buf[0], buf.len()) {
+            (0x00, _) => Ok((OpCode::NoOp, 1)),
+            (0x01, _) => Ok((OpCode::OpReturn, 1)),
+            (0x02, 2..) => Ok((OpCode::OpConstant(buf[1]), 2)),
+            (0x02, few) => Err(OpDecodeError::insufficient(2, few)),
+            (unknown, _) => Err(OpDecodeError::unknown(unknown)),
+        }
+    }
+}
+
+impl Encode for OpCode {
+    fn encode<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<usize> {
+        match self {
+            OpCode::NoOp => writer.write_all(&[0x00]).map(|_| 1),
+            OpCode::OpReturn => writer.write_all(&[0x01]).map(|_| 1),
+            OpCode::OpConstant(addr) => writer.write_all(&[0x02, *addr]).map(|_| 2),
+        }
+    }
+}
+
+impl OpCode {
+    pub fn disassemble(&self, f: &mut fmt::Formatter<'_>, chunk: &Chunk) -> fmt::Result {
+        match self {
+            OpCode::NoOp => write!(f, "NOOP"),
+            OpCode::OpReturn => write!(f, "OP_RETURN"),
+            OpCode::OpConstant(addr) => {
+                let constant = chunk.constants[*addr as usize];
+                write!(f, "{:<16} {:<4?}[{addr:<03}]", "OP_CONSTANT", constant)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -22,34 +66,12 @@ pub enum OpDecodeError {
     InsufficientBytes { needed: usize, available: usize },
 }
 
-impl Decode for OpCode {
-    type Err = OpDecodeError;
-
-    fn decode(buf: &[u8]) -> Result<(Self, usize), Self::Err> {
-        debug_assert!(!buf.is_empty());
-
-        match buf[0] {
-            0x00 => Ok((OpCode::NoOp, 1)),
-            0x01 => Ok((OpCode::OpReturn, 1)),
-            unknown => Err(OpDecodeError::UnknownOpCode(unknown)),
-        }
+impl OpDecodeError {
+    fn unknown(byte: u8) -> Self {
+        Self::UnknownOpCode(byte)
     }
-}
 
-impl Encode for OpCode {
-    fn encode<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<usize> {
-        match self {
-            OpCode::NoOp => writer.write_all(&[0x00]).map(|_| 1),
-            OpCode::OpReturn => writer.write_all(&[0x01]).map(|_| 1),
-        }
-    }
-}
-
-impl Debug for OpCode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OpCode::NoOp => f.write_str("NOOP"),
-            OpCode::OpReturn => f.write_str("OP_RETURN"),
-        }
+    fn insufficient(needed: usize, available: usize) -> Self {
+        Self::InsufficientBytes { needed, available }
     }
 }

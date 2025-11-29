@@ -29,6 +29,7 @@ impl<'a, 'f> Disassembler<'a, 'f> {
     }
 
     pub fn disassemble_instruction(&mut self, offset: u64, opcode: OpCode) -> fmt::Result {
-        write!(self.f, "{offset:04} | {opcode:<10?}")
+        write!(self.f, "{offset:04} | ")?;
+        opcode.disassemble(self.f, self.chunk)
     }
 }
