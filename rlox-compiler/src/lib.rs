@@ -5,3 +5,4 @@ pub mod debug;
 pub mod enconding;
 pub mod opcode;
 pub mod value;
+pub mod vm;

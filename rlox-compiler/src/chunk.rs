@@ -1,10 +1,7 @@
-use std::{
-    fmt::{self, Debug},
-    io::Cursor,
-};
+use std::fmt::{self, Debug};
 
 use crate::{
-    debug::Disassembler,
+    debug::{Disassembler, LineInfo},
     enconding::OpEncoder,
     opcode::OpCode,
     value::{Addr, Value},
@@ -12,8 +9,10 @@ use crate::{
 
 #[derive(Default)]
 pub struct Chunk {
-    pub(crate) code: Cursor<Vec<u8>>,
+    // TODO: make it generic over Read
+    pub(crate) code: Vec<u8>,
     pub(crate) constants: Vec<Value>,
+    pub(crate) lines: Vec<LineInfo>,
 }
 
 impl Chunk {
@@ -30,6 +29,24 @@ impl Chunk {
         self.code
             .encode_op(&instruction)
             .expect("what could go wrong :)");
+    }
+
+    pub fn write_with_line(&mut self, instruction: OpCode, line: u32) {
+        let start_offset = self.code.len() as u64;
+        self.code
+            .encode_op(&instruction)
+            .expect("what could go wrong :)");
+
+        let last_byte_offset = self.code.len() as u64;
+        match self.lines.last_mut() {
+            Some(line_info) if line_info.line == line => {
+                line_info.byte_range.end = last_byte_offset
+            }
+            _ => self.lines.push(LineInfo {
+                line,
+                byte_range: start_offset..last_byte_offset,
+            }),
+        };
     }
 }
 
