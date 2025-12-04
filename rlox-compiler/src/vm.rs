@@ -29,12 +29,12 @@ impl VirtualMachine {
 
     pub fn run(&mut self, chunk: Chunk) -> Result<(), Error> {
         let mut pc = Cursor::new(chunk.code.as_slice());
-        while let Some(ins) = pc.decode_op::<OpCode>()? {
+        while let Some(op) = pc.decode_op::<OpCode>()? {
             // self.trace(ins);
-            match ins {
+            match op {
                 OpCode::NoOp => {}
                 OpCode::Return => {
-                    let a = self.stack_pop()?;
+                    let a = self.stack_pop();
                     println!("{a}");
                     return Ok(());
                 }
@@ -43,30 +43,30 @@ impl VirtualMachine {
                     self.stack_push(constant);
                 }
                 OpCode::Neg => {
-                    let a = self.stack_pop()?;
+                    let a = self.stack_pop();
                     self.stack.push(-a);
                 }
                 OpCode::Add => {
-                    let b = self.stack_pop()?;
-                    let a = self.stack_pop()?;
+                    let b = self.stack_pop();
+                    let a = self.stack_pop();
                     let res = a + b;
                     self.stack_push(res);
                 }
                 OpCode::Sub => {
-                    let b = self.stack_pop()?;
-                    let a = self.stack_pop()?;
+                    let b = self.stack_pop();
+                    let a = self.stack_pop();
                     let res = a - b;
                     self.stack_push(res);
                 }
                 OpCode::Mul => {
-                    let b = self.stack_pop()?;
-                    let a = self.stack_pop()?;
+                    let b = self.stack_pop();
+                    let a = self.stack_pop();
                     let res = a * b;
                     self.stack_push(res);
                 }
                 OpCode::Div => {
-                    let b = self.stack_pop()?;
-                    let a = self.stack_pop()?;
+                    let b = self.stack_pop();
+                    let a = self.stack_pop();
                     let res = a / b;
                     self.stack_push(res);
                 }
@@ -79,14 +79,15 @@ impl VirtualMachine {
         self.stack.push(value);
     }
 
-    fn stack_pop(&mut self) -> Result<Value, Error> {
-        let stack_err_msg = "nothing on stack when attempted to pop";
-        self.stack.pop().ok_or(Error::Runtime(stack_err_msg.into()))
+    fn stack_pop(&mut self) -> Value {
+        self.stack
+            .pop()
+            .expect("compiler bug, nothing to pop on the VM stack")
     }
 
     #[expect(dead_code)]
-    fn trace(&self, ins: OpCode) {
-        println!("--> {:?}", ins);
+    fn trace(&self, op: OpCode) {
+        println!("--> {:?}", op);
         print!("--> {:>16}", "stack: [ ");
         let mut stack_iter = self.stack.iter().peekable();
         while let Some(value) = stack_iter.next() {
