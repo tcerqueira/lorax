@@ -43,8 +43,8 @@ impl VirtualMachine {
                     self.stack_push(constant);
                 }
                 OpCode::Neg => {
-                    let a = self.stack_pop();
-                    self.stack.push(-a);
+                    let x = self.stack_top();
+                    *x = -*x;
                 }
                 OpCode::Add => {
                     let b = self.stack_pop();
@@ -83,6 +83,14 @@ impl VirtualMachine {
         self.stack
             .pop()
             .expect("compiler bug, nothing to pop on the VM stack")
+    }
+
+    fn stack_top(&mut self) -> &mut Value {
+        // optimization for ops that pop 1 value and push 1 value
+        // allows mutation in place
+        self.stack
+            .last_mut()
+            .expect("compiler bug, nothing on top of the VM stack")
     }
 
     #[expect(dead_code)]
