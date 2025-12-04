@@ -3,9 +3,7 @@ use std::process::{ExitCode, Termination};
 use rlox_lexer::error::LexingError;
 use thiserror::Error;
 
-use crate::{
-    parsing::error::ParsingError, passes::resolver::ResolverError, runtime::error::RuntimeError,
-};
+use crate::{parsing::error::ParsingError, passes::error::PassError, runtime::error::RuntimeError};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -16,7 +14,7 @@ pub enum Error {
     #[error("{n} errors:\n{list}", n = .0.len(), list = display_error_list(.0))]
     Parsing(Vec<ParsingError>),
     #[error(transparent)]
-    Resolver(#[from] ResolverError),
+    Pass(#[from] PassError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
     #[error(transparent)]
@@ -27,7 +25,7 @@ impl Termination for Error {
     fn report(self) -> ExitCode {
         match self {
             Error::Cli => ExitCode::from(64),
-            Error::Parsing { .. } | Error::Lexing(_) | Error::Resolver(_) => ExitCode::from(65),
+            Error::Parsing { .. } | Error::Lexing(_) | Error::Pass(_) => ExitCode::from(65),
             Error::Runtime(_) => ExitCode::from(70),
             Error::Other(_) => ExitCode::FAILURE,
         }

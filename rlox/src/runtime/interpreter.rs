@@ -511,9 +511,7 @@ mod tests {
             let ast = program(&src, &mut ast_arena);
 
             let mut interpreter = Interpreter::new();
-            Resolver::new(&mut interpreter, &ast_arena)
-                .resolve(&ast)
-                .expect("resolver failed to resolve");
+            Resolver::new(&mut interpreter, &ast_arena).resolve(&ast);
 
             interpreter
                 .interpret(ast, &ast_arena)

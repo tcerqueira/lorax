@@ -61,7 +61,7 @@ fn run(
         .parse()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
 
-    Resolver::new(interpreter, ast_arena).resolve(&program)?;
+    Resolver::new(interpreter, ast_arena).resolve(&program);
 
     interpreter
         .interpret(program, ast_arena)
