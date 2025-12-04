@@ -23,8 +23,7 @@ impl Decode for OpCode {
     type Err = OpDecodeError;
 
     fn decode(buf: &[u8]) -> Result<(Self, usize), Self::Err> {
-        debug_assert!(!buf.is_empty());
-
+        assert!(!buf.is_empty());
         match (buf[0], buf.len()) {
             (0x00, _) => Ok((OpCode::NoOp, 1)),
             (0x01, _) => Ok((OpCode::OpReturn, 1)),
@@ -52,7 +51,7 @@ impl OpCode {
             OpCode::OpReturn => write!(f, "OP_RETURN"),
             OpCode::OpConstant(addr) => {
                 let constant = chunk.constants[*addr as usize];
-                write!(f, "{:<16} {:<4?}[{addr:<03}]", "OP_CONSTANT", constant)
+                write!(f, "{:<16} {:<4}[{addr:<03}]", "OP_CONSTANT", constant)
             }
         }
     }

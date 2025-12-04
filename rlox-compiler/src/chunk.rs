@@ -9,7 +9,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct Chunk {
-    // TODO: make it generic over Read
+    // TODO: make it generic over Read (?)
     pub(crate) code: Vec<u8>,
     pub(crate) constants: Vec<Value>,
     pub(crate) lines: Vec<LineInfo>,
@@ -33,9 +33,7 @@ impl Chunk {
 
     pub fn write_with_line(&mut self, instruction: OpCode, line: u32) {
         let start_offset = self.code.len() as u64;
-        self.code
-            .encode_op(&instruction)
-            .expect("what could go wrong :)");
+        self.write(instruction);
 
         let last_byte_offset = self.code.len() as u64;
         match self.lines.last_mut() {
@@ -47,6 +45,10 @@ impl Chunk {
                 byte_range: start_offset..last_byte_offset,
             }),
         };
+    }
+
+    pub fn constant(&self, addr: Addr) -> Value {
+        self.constants[addr as usize]
     }
 }
 

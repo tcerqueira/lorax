@@ -1,6 +1,6 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Value(f64);
 
 impl Value {
@@ -9,9 +9,9 @@ impl Value {
     }
 }
 
-impl Debug for Value {
+impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 

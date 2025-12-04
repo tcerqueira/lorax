@@ -31,7 +31,7 @@ impl<'a, 'f> Disassembler<'a, 'f> {
         let mut curr_line = line_iter.next();
         let mut prev_line = 0;
 
-        while let Ok(instruction) = decoder.decode_op::<OpCode>() {
+        while let Ok(Some(instruction)) = decoder.decode_op::<OpCode>() {
             let line_str = loop {
                 break match curr_line {
                     Some(line_info) if line_info.byte_range.contains(&offset) => {

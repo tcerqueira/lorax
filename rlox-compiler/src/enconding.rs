@@ -15,26 +15,26 @@ pub trait Decode: Sized {
 pub enum DecodeError<E> {
     #[error("op code error: {0}")]
     OpCodeError(E),
-    #[error("end of stream")]
-    EndOfStream,
+    // #[error("end of stream")]
+    // EndOfStream,
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 }
 
 pub trait OpDecoder: BufRead + Seek {
-    fn decode_op<T>(&mut self) -> Result<T, DecodeError<T::Err>>
+    fn decode_op<T>(&mut self) -> Result<Option<T>, DecodeError<T::Err>>
     where
         T: Decode,
         T::Err: Error,
     {
         let buf = self.fill_buf()?;
         if buf.is_empty() {
-            return Err(DecodeError::EndOfStream);
+            return Ok(None);
         }
 
         let (opcode, consumed) = T::decode(buf).map_err(DecodeError::OpCodeError)?;
         self.consume(consumed);
-        Ok(opcode)
+        Ok(Some(opcode))
     }
 
     fn current_position(&mut self) -> io::Result<u64> {
