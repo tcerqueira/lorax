@@ -16,15 +16,6 @@ pub struct Chunk {
 }
 
 impl Chunk {
-    pub fn add_constant(&mut self, value: Value) -> Addr {
-        assert!(
-            self.constants.len() < u8::MAX as usize,
-            "can't have more than 255 constants per chunk"
-        );
-        self.constants.push(value);
-        (self.constants.len() - 1) as u8
-    }
-
     pub fn write(&mut self, instruction: OpCode) {
         self.code
             .encode_op(&instruction)
@@ -45,6 +36,25 @@ impl Chunk {
                 byte_range: start_offset..last_byte_offset,
             }),
         };
+    }
+
+    pub fn write_constant(&mut self, value: Value) {
+        let addr = self.add_constant(value);
+        self.write(OpCode::Constant(addr));
+    }
+
+    pub fn write_constant_with_line(&mut self, value: Value, line: u32) {
+        let addr = self.add_constant(value);
+        self.write_with_line(OpCode::Constant(addr), line);
+    }
+
+    fn add_constant(&mut self, value: Value) -> Addr {
+        assert!(
+            self.constants.len() < u8::MAX as usize,
+            "can't have more than 255 constants per chunk"
+        );
+        self.constants.push(value);
+        (self.constants.len() - 1) as u8
     }
 
     pub fn constant(&self, addr: Addr) -> Value {
