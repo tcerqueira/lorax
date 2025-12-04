@@ -59,14 +59,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rlox-compiler"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "thiserror",
-]
-
-[[package]]
 name = "rlox-lexer"
 version = "0.1.0"
 dependencies = [
@@ -87,6 +79,14 @@ dependencies = [
  "rlox-lexer",
  "rlox-report",
  "slotmap",
+ "thiserror",
+]
+
+[[package]]
+name = "rlox-vm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
  "thiserror",
 ]
 
