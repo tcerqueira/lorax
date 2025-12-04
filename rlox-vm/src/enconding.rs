@@ -37,15 +37,16 @@ pub trait OpDecoder: BufRead + Seek {
         Ok(Some(opcode))
     }
 
+    #[expect(dead_code)]
     fn current_position(&mut self) -> io::Result<u64> {
         self.stream_position()
     }
-
+    #[expect(dead_code)]
     fn jump_to(&mut self, addr: u64) -> io::Result<()> {
         self.seek(SeekFrom::Start(addr))?;
         Ok(())
     }
-
+    #[expect(dead_code)]
     fn relative_jump(&mut self, offset: i64) -> io::Result<()> {
         self.seek(SeekFrom::Current(offset))?;
         Ok(())

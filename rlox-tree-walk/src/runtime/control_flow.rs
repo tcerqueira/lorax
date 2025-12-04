@@ -1,6 +1,7 @@
+use rlox_report::error::RuntimeError;
 use thiserror::Error;
 
-use crate::runtime::{error::RuntimeError, object::Object};
+use crate::runtime::object::Object;
 
 #[derive(Debug, Error)]
 pub enum ControlFlow {

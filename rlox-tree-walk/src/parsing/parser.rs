@@ -1,8 +1,9 @@
 use std::{collections::VecDeque, fmt::Display};
 
 use rlox_lexer::tokens::*;
+use rlox_report::error::ParsingError;
 
-use super::{error::ParsingError, expr::*, stmt::*};
+use super::{expr::*, stmt::*};
 use crate::{
     parsing::ast::{AstArena, ExprId, StmtId},
     runtime::object::Object,
@@ -510,8 +511,8 @@ impl<'a> Parser<'a> {
                 expr
             }
             Some(tt_pat!(ident @ TokenType::Identifier(_))) => ExprVariable { name: ident }.into(),
-            Some(tok) => return Err(ParsingError::expected("expression", &tok)),
-            None => return Err(ParsingError::expected("expression", &self.eof)),
+            Some(tok) => return Err(ParsingError::expected(&tok, "expression", &tok)),
+            None => return Err(ParsingError::expected(&self.eof, "expression", &self.eof)),
         };
         Ok(expr)
     }
@@ -579,8 +580,8 @@ impl<'a> Parser<'a> {
     fn consume(&mut self, pattern: TokenType) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern == tok.ty => Ok(tok),
-            Some(tok) => Err(ParsingError::expected(pattern, &tok)),
-            None => Err(ParsingError::expected(pattern, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(&tok, pattern, &tok)),
+            None => Err(ParsingError::expected(&self.eof, pattern, &self.eof)),
         }
     }
 
@@ -591,8 +592,8 @@ impl<'a> Parser<'a> {
     ) -> Result<Token, ParsingError> {
         match self.advance() {
             Some(tok) if pattern_fn(&tok.ty) => Ok(tok),
-            Some(tok) => Err(ParsingError::expected(expected_item, &tok)),
-            None => Err(ParsingError::expected(expected_item, &self.eof)),
+            Some(tok) => Err(ParsingError::expected(&tok, expected_item, &tok)),
+            None => Err(ParsingError::expected(&self.eof, expected_item, &self.eof)),
         }
     }
 

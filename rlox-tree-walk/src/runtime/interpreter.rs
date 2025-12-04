@@ -4,10 +4,9 @@ use std::{
 };
 
 use rlox_lexer::tokens::TokenType;
-use rlox_report::{Span, Spanned};
+use rlox_report::{Span, Spanned, error::RuntimeError};
 
 use super::{environment::*, object::*};
-
 use crate::{
     parsing::{
         ast::{AstArena, AstRef, ExprId, ExprRef, StmtId, StmtRef},
@@ -18,7 +17,6 @@ use crate::{
     runtime::{
         callable::{Function, NativeFunction},
         control_flow::ControlFlow,
-        error::RuntimeError,
     },
 };
 
@@ -54,11 +52,8 @@ impl Interpreter {
         for statement in program.iter().map(|&s| ast_arena.stmt_ref(s)) {
             match self.execute(statement) {
                 Ok(()) => {}
-                Err(cf @ (ControlFlow::Break | ControlFlow::Continue)) => {
-                    return Err(RuntimeError::invalid_break_or_continue(
-                        self.current_span(),
-                        cf,
-                    ));
+                Err(ControlFlow::Break | ControlFlow::Continue) => {
+                    return Err(RuntimeError::invalid_break_or_continue(self.current_span()));
                 }
                 Err(ControlFlow::Return(_)) => {
                     return Err(RuntimeError::invalid_return(self.current_span()));

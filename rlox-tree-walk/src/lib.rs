@@ -6,18 +6,19 @@ use std::{
 
 use anyhow::Context;
 use rlox_lexer::Scanner;
-use rlox_report::Reporter;
+use rlox_report::{Error, Reporter};
 
-use crate::{error::TreeWalkError, parsing::*, runtime::Interpreter};
+use crate::{
+    parsing::{ast::AstArena, *},
+    passes::resolver::Resolver,
+    runtime::Interpreter,
+};
 
-use crate::{parsing::ast::AstArena, passes::resolver::Resolver};
-
-pub mod error;
 mod parsing;
 mod passes;
 pub mod runtime;
 
-pub type Result<T> = ::std::result::Result<T, TreeWalkError>;
+type Result<T> = ::std::result::Result<T, Error>;
 
 pub fn run_file(path: &Path) -> crate::Result<()> {
     let source = fs::read_to_string(path)

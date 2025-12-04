@@ -1,14 +1,13 @@
 use std::fmt::{Debug, Display};
 
+use rlox_report::error::RuntimeError;
+
 use crate::{
     parsing::{
         ast::{AstArena, AstRef, StmtId},
         stmt::StmtFunction,
     },
-    runtime::{
-        Interpreter, control_flow::ControlFlow, environment::Environment, error::RuntimeError,
-        object::Object,
-    },
+    runtime::{Interpreter, control_flow::ControlFlow, environment::Environment, object::Object},
 };
 
 pub trait ObjCallable {
@@ -111,9 +110,8 @@ impl ObjCallable for Function {
                 Ok(_) => Ok(Object::nil()),
                 Err(ControlFlow::Return(object)) => Ok(object),
                 Err(ControlFlow::Error(err)) => Err(err),
-                Err(control_flow) => Err(RuntimeError::invalid_break_or_continue(
+                Err(_) => Err(RuntimeError::invalid_break_or_continue(
                     interpreter.current_span(),
-                    control_flow,
                 )),
             }
         };

@@ -131,6 +131,12 @@ impl Display for TokenType {
     }
 }
 
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.ty.fmt(f)
+    }
+}
+
 #[macro_export]
 macro_rules! tok {
     (EOF, $line:expr) => {

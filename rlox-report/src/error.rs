@@ -1,12 +1,19 @@
 use std::process::{ExitCode, Termination};
 
-use rlox_lexer::error::LexingError;
 use thiserror::Error;
 
-use crate::{parsing::error::ParsingError, passes::error::PassError, runtime::error::RuntimeError};
+pub mod lexing;
+pub mod parsing;
+pub mod pass;
+pub mod runtime;
+
+pub use lexing::Error as LexingError;
+pub use parsing::Error as ParsingError;
+pub use pass::Error as PassError;
+pub use runtime::Error as RuntimeError;
 
 #[derive(Debug, Error)]
-pub enum TreeWalkError {
+pub enum Error {
     #[error("{n} errors:\n{list}", n = .0.len(), list = display_error_list(.0))]
     Lexing(Vec<LexingError>),
     #[error("{n} errors:\n{list}", n = .0.len(), list = display_error_list(.0))]
@@ -19,14 +26,12 @@ pub enum TreeWalkError {
     Other(#[from] anyhow::Error),
 }
 
-impl Termination for TreeWalkError {
+impl Termination for Error {
     fn report(self) -> ExitCode {
         match self {
-            TreeWalkError::Parsing { .. } | TreeWalkError::Lexing(_) | TreeWalkError::Pass(_) => {
-                ExitCode::from(65)
-            }
-            TreeWalkError::Runtime(_) => ExitCode::from(70),
-            TreeWalkError::Other(_) => ExitCode::FAILURE,
+            Error::Parsing { .. } | Error::Lexing(_) | Error::Pass(_) => ExitCode::from(65),
+            Error::Runtime(_) => ExitCode::from(70),
+            Error::Other(_) => ExitCode::FAILURE,
         }
     }
 }
@@ -39,26 +44,26 @@ fn display_error_list(errors: &[impl ToString]) -> String {
         .join("\n")
 }
 
-impl From<ParsingError> for TreeWalkError {
-    fn from(err: ParsingError) -> Self {
+impl From<parsing::Error> for Error {
+    fn from(err: parsing::Error) -> Self {
         Self::Parsing(vec![err])
     }
 }
 
-impl From<Vec<ParsingError>> for TreeWalkError {
-    fn from(errors: Vec<ParsingError>) -> Self {
+impl From<Vec<parsing::Error>> for Error {
+    fn from(errors: Vec<parsing::Error>) -> Self {
         Self::Parsing(errors)
     }
 }
 
-impl From<LexingError> for TreeWalkError {
-    fn from(err: LexingError) -> Self {
+impl From<lexing::Error> for Error {
+    fn from(err: lexing::Error) -> Self {
         Self::Lexing(vec![err])
     }
 }
 
-impl From<Vec<LexingError>> for TreeWalkError {
-    fn from(errors: Vec<LexingError>) -> Self {
+impl From<Vec<lexing::Error>> for Error {
+    fn from(errors: Vec<lexing::Error>) -> Self {
         Self::Lexing(errors)
     }
 }

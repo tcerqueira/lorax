@@ -1,5 +1,6 @@
-use super::{error::LexingError, tokens::*};
-use rlox_report::*;
+use rlox_report::{error::LexingError, *};
+
+use super::tokens::*;
 
 pub struct Scanner<'s> {
     tokens: Vec<Token>,

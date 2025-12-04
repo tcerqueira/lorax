@@ -8,15 +8,15 @@ use anyhow::Context;
 use rlox_lexer::Scanner;
 use rlox_report::Reporter;
 
-use crate::parsing::*;
-
-use crate::{parsing::ast::AstArena, passes::resolver::Resolver};
+use crate::{
+    parsing::{ast::AstArena, *},
+    passes::resolver::Resolver,
+};
 
 pub mod callable;
 mod chain;
 pub mod control_flow;
 pub mod environment;
-pub mod error;
 pub mod interpreter;
 pub mod object;
 

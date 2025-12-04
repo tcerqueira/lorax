@@ -2,9 +2,8 @@ use std::{cell::RefMut, collections::HashMap};
 
 use thiserror::Error;
 
-use crate::runtime::chain::{Chain, SharedNode};
-
 use super::object::Object;
+use crate::runtime::chain::{Chain, SharedNode};
 
 #[derive(Debug, Clone)]
 pub struct Environment {
