@@ -6,7 +6,5 @@ edition = "2024"
 [dependencies]
 rlox-report = { path = "../rlox-report" }
 rlox-tree-walk = { path = "../rlox-tree-walk" }
-anyhow = "1"
-derive_more = { version = "2", features = ["from"] }
-slotmap = "1"
 thiserror = "2"
+anyhow = "1"
