@@ -52,8 +52,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "derive_more",
- "rlox-lexer",
  "rlox-report",
+ "rlox-tree-walk",
  "slotmap",
  "thiserror",
 ]
@@ -77,6 +77,18 @@ dependencies = [
 [[package]]
 name = "rlox-report"
 version = "0.1.0"
+
+[[package]]
+name = "rlox-tree-walk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "derive_more",
+ "rlox-lexer",
+ "rlox-report",
+ "slotmap",
+ "thiserror",
+]
 
 [[package]]
 name = "slotmap"

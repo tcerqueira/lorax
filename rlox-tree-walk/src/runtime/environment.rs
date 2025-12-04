@@ -12,8 +12,8 @@ pub struct Environment {
     global: SharedNode<ScopedEnvironment>,
 }
 
-impl Environment {
-    pub fn new() -> Self {
+impl Default for Environment {
+    fn default() -> Self {
         let mut chain = Chain::new();
         // global scope
         chain.push(ScopedEnvironment::new());
@@ -22,6 +22,12 @@ impl Environment {
             global: chain.head_node().unwrap().clone(),
             chain,
         }
+    }
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn push_scope(&mut self) {

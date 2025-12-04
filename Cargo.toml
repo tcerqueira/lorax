@@ -1,3 +1,3 @@
 [workspace]
-members = ["rlox", "rlox-compiler", "rlox-lexer", "rlox-report"]
+members = ["rlox", "rlox-compiler", "rlox-lexer", "rlox-report", "rlox-tree-walk"]
 resolver = "3"
