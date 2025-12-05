@@ -54,6 +54,7 @@ dependencies = [
  "anyhow",
  "rlox-report",
  "rlox-tree-walk",
+ "rlox-vm",
  "thiserror",
 ]
 
@@ -90,6 +91,8 @@ name = "rlox-vm"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rlox-lexer",
+ "rlox-report",
  "thiserror",
 ]
 

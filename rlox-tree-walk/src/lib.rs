@@ -18,15 +18,13 @@ mod parsing;
 mod passes;
 pub mod runtime;
 
-type Result<T> = ::std::result::Result<T, Error>;
-
-pub fn run_file(path: &Path) -> crate::Result<()> {
+pub fn run_file(path: &Path) -> Result<(), Error> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("could not read source file {}", path.display()))?;
     run(source, &mut Interpreter::new(), &mut AstArena::default())
 }
 
-pub fn run_prompt() -> crate::Result<()> {
+pub fn run_prompt() -> Result<(), Error> {
     let mut buf_reader = BufReader::new(io::stdin());
     let mut ast_arena = AstArena::default();
     let mut interpreter = Interpreter::new();
@@ -50,7 +48,7 @@ fn run(
     source: String,
     interpreter: &mut Interpreter,
     ast_arena: &mut AstArena,
-) -> crate::Result<()> {
+) -> Result<(), Error> {
     let reporter = Reporter::new(&source);
     let tokens = Scanner::new(&source)
         .scan_tokens()

@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use rlox::error::Error;
-use rlox_tree_walk::runtime;
+use rlox_tree_walk as runtime;
+// use rlox_vm as runtime;
 
 fn main() -> rlox::Result<()> {
     let args: Vec<_> = std::env::args().collect();

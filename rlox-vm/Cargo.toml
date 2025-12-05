@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+rlox-report = { path = "../rlox-report" }
+rlox-lexer = { path = "../rlox-lexer" }
 thiserror = "2"
 anyhow = "1"
