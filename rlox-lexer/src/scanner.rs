@@ -1,9 +1,10 @@
+use std::iter::FusedIterator;
+
 use rlox_report::{error::LexingError, *};
 
 use super::tokens::*;
 
 pub struct Scanner<'s> {
-    tokens: Vec<Token>,
     source: &'s str,
     curr: usize,
     global_curr: usize,
@@ -13,7 +14,6 @@ pub struct Scanner<'s> {
 impl<'s> Scanner<'s> {
     pub fn new(source: &'s str) -> Self {
         Self {
-            tokens: vec![],
             source,
             curr: 0,
             global_curr: 0,
@@ -23,20 +23,20 @@ impl<'s> Scanner<'s> {
 
     // TODO: make it a lazy iterator use std::iter::from_fn
     pub fn scan_tokens(mut self) -> Result<Vec<Token>, Vec<LexingError>> {
-        let mut errors = vec![];
-        while !self.source.is_empty() {
-            if let Err(err) = self.scan_token() {
-                errors.push(err);
+        let mut tokens = Vec::new();
+        let mut errors = Vec::new();
+        loop {
+            match self.scan_token() {
+                Ok(Some(token)) => tokens.push(self.make_token(token)),
+                Ok(None) => break,
+                Err(err) => errors.push(err),
             }
-            // update source to the start of the next token
-            self.source = self.rest_span();
-            self.curr = 0;
         }
         if !errors.is_empty() {
             return Err(errors);
         }
 
-        self.tokens.push(Token {
+        tokens.push(Token {
             ty: TokenType::Eof,
             span: Span {
                 line_start: self.line,
@@ -44,52 +44,74 @@ impl<'s> Scanner<'s> {
                 ..Default::default()
             },
         });
-        Ok(self.tokens)
+        Ok(tokens)
     }
 
-    pub fn scan_token(&mut self) -> Result<(), LexingError> {
-        let c = self.advance();
-        match c {
-            '(' => self.add_token(TokenType::LeftParen),
-            ')' => self.add_token(TokenType::RightParen),
-            '{' => self.add_token(TokenType::LeftBrace),
-            '}' => self.add_token(TokenType::RightBrace),
-            ',' => self.add_token(TokenType::Comma),
-            '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
-            '+' => self.add_token(TokenType::Plus),
-            ';' => self.add_token(TokenType::Semicolon),
-            '*' => self.add_token(TokenType::Star),
-            '!' if self.matches('=') => self.add_token(TokenType::BangEqual),
-            '!' => self.add_token(TokenType::Bang),
-            '=' if self.matches('=') => self.add_token(TokenType::EqualEqual),
-            '=' => self.add_token(TokenType::Equal),
-            '<' if self.matches('=') => self.add_token(TokenType::LessEqual),
-            '<' => self.add_token(TokenType::Less),
-            '>' if self.matches('=') => self.add_token(TokenType::GreaterEqual),
-            '>' => self.add_token(TokenType::Greater),
-            '/' if self.matches('/') => {
-                while self.peek().is_some_and(|c| c != '\n') {
-                    self.advance(); // just consume the comment until end of the line
+    fn scan_token(&mut self) -> Result<Option<TokenType>, LexingError> {
+        let tok = loop {
+            let Some(c) = self.advance_checked() else {
+                return Ok(None);
+            };
+            let tok = match c {
+                '(' => Some(TokenType::LeftParen),
+                ')' => Some(TokenType::RightParen),
+                '{' => Some(TokenType::LeftBrace),
+                '}' => Some(TokenType::RightBrace),
+                ',' => Some(TokenType::Comma),
+                '.' => Some(TokenType::Dot),
+                '-' => Some(TokenType::Minus),
+                '+' => Some(TokenType::Plus),
+                ';' => Some(TokenType::Semicolon),
+                '*' => Some(TokenType::Star),
+                '!' if self.matches('=') => Some(TokenType::BangEqual),
+                '!' => Some(TokenType::Bang),
+                '=' if self.matches('=') => Some(TokenType::EqualEqual),
+                '=' => Some(TokenType::Equal),
+                '<' if self.matches('=') => Some(TokenType::LessEqual),
+                '<' => Some(TokenType::Less),
+                '>' if self.matches('=') => Some(TokenType::GreaterEqual),
+                '>' => Some(TokenType::Greater),
+                '/' if self.matches('/') => {
+                    while self.peek().is_some_and(|c| c != '\n') {
+                        self.advance(); // just consume the comment until end of the line
+                    }
+                    None
                 }
-            }
-            '/' => self.add_token(TokenType::Slash),
-            ' ' | '\r' | '\t' => {}
-            '\n' => self.line += 1,
-            '"' => self.string()?,
-            c if c.is_ascii_digit() => self.number()?,
-            c if c.is_alphabetic() || c == '_' => self.identifier()?,
-            _ => {
-                return Err(LexingError::new(
-                    self.make_span(),
-                    "Unexpected character.".into(),
-                ));
-            }
+                '/' => Some(TokenType::Slash),
+                ' ' | '\r' | '\t' => None,
+                '\n' => {
+                    self.line += 1;
+                    None
+                }
+                '"' => Some(self.string()?),
+                c if c.is_ascii_digit() => Some(self.number()?),
+                c if c.is_alphabetic() || c == '_' => Some(self.identifier()?),
+                _ => {
+                    return Err(LexingError::new(
+                        self.make_span(),
+                        "Unexpected character.".into(),
+                    ));
+                }
+            };
+            // update source to the start of the next token
+            self.source = self.rest_span();
+            self.curr = 0;
+
+            break match tok {
+                Some(tok) => tok,
+                None => continue,
+            };
         };
-        Ok(())
+        Ok(Some(tok))
     }
 
-    fn identifier(&mut self) -> Result<(), LexingError> {
+    pub fn next_token(&mut self) -> Option<Result<Token, LexingError>> {
+        self.scan_token()
+            .transpose()
+            .map(|t| t.map(|t| self.make_token(t)))
+    }
+
+    fn identifier(&mut self) -> Result<TokenType, LexingError> {
         for _ in self
             .rest_span()
             .chars()
@@ -98,11 +120,10 @@ impl<'s> Scanner<'s> {
             self.advance();
         }
         let ident = self.curr_span();
-        self.add_token(keyword(ident).unwrap_or(TokenType::Identifier(ident.into())));
-        Ok(())
+        Ok(keyword(ident).unwrap_or(TokenType::Identifier(ident.into())))
     }
 
-    fn string(&mut self) -> Result<(), LexingError> {
+    fn string(&mut self) -> Result<TokenType, LexingError> {
         // TODO: escape string
         for c in self.rest_span().chars().take_while(|c| *c != '"') {
             if c == '\n' {
@@ -118,13 +139,12 @@ impl<'s> Scanner<'s> {
         ))?;
 
         const QUOTE_WIDTH: usize = '"'.len_utf8();
-        self.add_token(TokenType::String(
+        Ok(TokenType::String(
             self.curr_span()[QUOTE_WIDTH..self.curr_span().len() - QUOTE_WIDTH].into(),
-        ));
-        Ok(())
+        ))
     }
 
-    fn number(&mut self) -> Result<(), LexingError> {
+    fn number(&mut self) -> Result<TokenType, LexingError> {
         for _ in self.rest_span().chars().take_while(char::is_ascii_digit) {
             self.advance();
         }
@@ -138,10 +158,9 @@ impl<'s> Scanner<'s> {
             }
         }
 
-        self.add_token(TokenType::Number(self.curr_span().parse().expect(
+        Ok(TokenType::Number(self.curr_span().parse().expect(
             "any number with digits from 0..9, optionally separated by one '.', should always parse",
-        )));
-        Ok(())
+        )))
     }
 
     fn matches(&mut self, expected: char) -> bool {
@@ -178,11 +197,11 @@ impl<'s> Scanner<'s> {
         self.rest_span().chars().nth(n)
     }
 
-    fn add_token(&mut self, token: TokenType) {
-        self.tokens.push(Token {
+    fn make_token(&self, token: TokenType) -> Token {
+        Token {
             ty: token,
             span: self.make_span(),
-        });
+        }
     }
 
     fn curr_span(&self) -> &'s str {
@@ -229,6 +248,16 @@ fn keyword(s: &str) -> Option<TokenType> {
         _ => return None,
     })
 }
+
+impl Iterator for Scanner<'_> {
+    type Item = Result<Token, LexingError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
+    }
+}
+
+impl FusedIterator for Scanner<'_> {}
 
 #[cfg(test)]
 mod tests {
