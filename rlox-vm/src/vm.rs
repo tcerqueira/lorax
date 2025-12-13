@@ -1,5 +1,6 @@
 use std::io::Cursor;
 
+use rlox_report::error::RuntimeError;
 use thiserror::Error;
 
 use crate::{
@@ -15,19 +16,15 @@ pub struct VirtualMachine {
 }
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum VirtualMachineError {
     #[error(transparent)]
     Decode(#[from] DecodeError<OpDecodeError>),
-    #[error("runtime error: {0}")]
-    Runtime(String),
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
 }
 
 impl VirtualMachine {
-    pub fn interpret(&mut self, chunk: Chunk) -> Result<(), Error> {
-        self.run(chunk)
-    }
-
-    pub fn run(&mut self, chunk: Chunk) -> Result<(), Error> {
+    pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
             // self.trace(ins);

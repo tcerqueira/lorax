@@ -16,7 +16,7 @@ impl<'s> Reporter<'s> {
     pub fn report(&self, error: &impl Report) {
         let span = error.span();
         eprint!(
-            "[line {}] Error '{}': ",
+            "[line {:>4}] Error '{}': ",
             span.line_start,
             span.slice(self.src)
         );

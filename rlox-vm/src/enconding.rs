@@ -15,8 +15,6 @@ pub trait Decode: Sized {
 pub enum DecodeError<E> {
     #[error("op code error: {0}")]
     OpCodeError(E),
-    // #[error("end of stream")]
-    // EndOfStream,
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 }
@@ -68,4 +66,4 @@ pub trait OpEncoder: Write {
     }
 }
 
-impl<W: Write> OpEncoder for W {}
+impl<W> OpEncoder for W where W: Write {}

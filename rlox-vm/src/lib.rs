@@ -1,4 +1,5 @@
 #![feature(formatting_options)]
+#![feature(error_iter)]
 
 use std::{
     fs,
@@ -10,9 +11,13 @@ use anyhow::Context;
 use rlox_lexer::Scanner;
 use rlox_report::{Error, Reporter};
 
-use crate::vm::VirtualMachine;
+use crate::{
+    compiler::Compiler,
+    vm::{VirtualMachine, VirtualMachineError},
+};
 
 pub mod chunk;
+pub mod compiler;
 pub(crate) mod debug;
 pub(crate) mod enconding;
 pub mod opcode;
@@ -44,11 +49,18 @@ pub fn run_prompt() -> Result<(), Error> {
     Ok(())
 }
 
-fn run(source: String, _vm: &mut VirtualMachine) -> Result<(), Error> {
-    let reporter = Reporter::new(&source);
-    let _tokens = Scanner::new(&source)
-        .scan_tokens()
-        .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;
+fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
+    let _reporter = Reporter::new(&source);
+    let scanner = Scanner::new(&source);
 
-    todo!();
+    let mut compiler = Compiler::new(scanner);
+    let chunk = compiler.compile()?;
+
+    match vm.run(chunk) {
+        Err(VirtualMachineError::Decode(err)) => {
+            Err(anyhow::Error::new(err).context("malformed chunk").into())
+        }
+        Err(VirtualMachineError::Runtime(err)) => Err(err.into()),
+        Ok(()) => Ok(()),
+    }
 }

@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("Running VM...");
     let mut vm = VirtualMachine::default();
-    vm.interpret(chunk)?;
+    vm.run(chunk)?;
 
     Ok(())
 }
