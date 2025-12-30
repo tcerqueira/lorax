@@ -13,9 +13,17 @@ pub struct Chunk {
     pub(crate) code: Vec<u8>,
     pub(crate) constants: Vec<Value>,
     pub(crate) lines: Vec<LineInfo>,
+    pub(crate) label: Option<Box<str>>,
 }
 
 impl Chunk {
+    pub fn with_label(label: Box<str>) -> Self {
+        Self {
+            label: Some(label),
+            ..Self::default()
+        }
+    }
+
     pub fn write(&mut self, instruction: OpCode) {
         self.code
             .encode_op(&instruction)
@@ -64,7 +72,7 @@ impl Chunk {
 
 impl Debug for Chunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut disassembler = Disassembler::new(f, self, "Chunk");
+        let mut disassembler = Disassembler::new(f, self, self.label.as_deref().unwrap_or("Chunk"));
         disassembler.disassemble_chunk()
     }
 }

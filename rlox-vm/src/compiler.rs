@@ -1,28 +1,30 @@
 use std::iter::Peekable;
 
-use anyhow::Context;
 use rlox_lexer::{Scanner, tokens::Token};
 use rlox_report::error::LexingError;
 
-use crate::chunk::Chunk;
+use crate::{chunk::Chunk, opcode::OpCode};
 
 pub struct Compiler<'s> {
     scanner: Peekable<Scanner<'s>>,
+    compiling_chunk: Chunk,
 }
 
 impl<'s> Compiler<'s> {
     pub fn new(scanner: Scanner<'s>) -> Self {
         Self {
             scanner: scanner.peekable(),
+            compiling_chunk: Chunk::default(),
         }
     }
 
     pub fn compile(&mut self) -> Result<Chunk, anyhow::Error> {
-        while let Some(token) = self.advance().context("hehe")? {
+        while let Some(token) = self.advance()? {
             println!("{token}");
         }
         self.expression();
-        todo!()
+        self.compiling_chunk.write(OpCode::Return);
+        Ok(std::mem::take(&mut self.compiling_chunk))
     }
 
     fn expression(&mut self) {
