@@ -1,6 +1,5 @@
+// Adapted: bare string literals are not valid statements.
 ""
 "string"
 
-// expect: STRING "" 
-// expect: STRING "string" string
-// expect: EOF  null
+// [line 2] Error: bare strings are not valid statements

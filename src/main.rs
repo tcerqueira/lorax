@@ -1,14 +1,13 @@
 use std::path::Path;
 
 use rlox::error::Error;
-use rlox_tree_walk as runtime;
-// use rlox_vm as runtime;
 
 fn main() -> rlox::Result<()> {
     let args: Vec<_> = std::env::args().collect();
     match args.as_slice() {
-        [_] => runtime::run_prompt()?,
-        [_, script_path] => runtime::run_file(Path::new(script_path))?,
+        [_] => rlox_tree_walk::run_prompt()?,
+        [_, flag, script] if flag == "--vm" => rlox_vm::run_file(Path::new(script))?,
+        [_, script] => rlox_tree_walk::run_file(Path::new(script))?,
         _ => return Err(Error::Cli),
     };
     Ok(())

@@ -1,3 +1,4 @@
+// Adapted: bare identifiers are not valid statements.
 space    tabs				newlines
 
 
@@ -5,8 +6,4 @@ space    tabs				newlines
 
 end
 
-// expect: IDENTIFIER space null
-// expect: IDENTIFIER tabs null
-// expect: IDENTIFIER newlines null
-// expect: IDENTIFIER end null
-// expect: EOF  null
+// [line 1] Error: bare identifiers are not valid statements

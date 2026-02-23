@@ -1,12 +1,7 @@
+// Adapted: bare number literals are not valid statements.
 123
 123.456
 .456
 123.
 
-// expect: NUMBER 123 123.0
-// expect: NUMBER 123.456 123.456
-// expect: DOT . null
-// expect: NUMBER 456 456.0
-// expect: NUMBER 123 123.0
-// expect: DOT . null
-// expect: EOF  null
+// [line 2] Error: bare numbers are not valid statements

@@ -1,5 +1,5 @@
 fun div(n, d) {
-    if (d == 0) return 0;
+    if (d == 0) return;
     return n / d;
 }
 print div(2, 0);
