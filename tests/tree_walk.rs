@@ -1,5 +1,10 @@
 const BACKEND: rlox::test_utils::Backend = rlox::test_utils::Backend::TreeWalk;
 
+#[test]
+fn examples() {
+    rlox::test_utils::run_examples(BACKEND, "examples");
+}
+
 mod assignment {
     rlox::lox_tests!("assignment", [
         associativity,

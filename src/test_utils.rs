@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Clone, Copy)]
@@ -113,6 +113,25 @@ pub fn run_test(bin: &str, backend: Backend, path: &str) {
                 );
             }
         }
+    }
+}
+
+pub fn run_examples(backend: Backend, dir: &str) {
+    let examples: Vec<PathBuf> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("Failed to read directory {dir}: {e}"))
+        .flatten()
+        .filter(|f| f.file_name().to_string_lossy().ends_with(".lox"))
+        .map(|f| f.path())
+        .collect();
+
+    assert!(!examples.is_empty(), "No .lox files found in {dir}");
+
+    for path in &examples {
+        let result = match backend {
+            Backend::TreeWalk => rlox_tree_walk::run_file(path),
+            Backend::Vm => rlox_vm::run_file(path),
+        };
+        result.unwrap_or_else(|e| panic!("{} failed: {e}", path.display()));
     }
 }
 

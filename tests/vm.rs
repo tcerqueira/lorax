@@ -30,6 +30,12 @@ macro_rules! lox_tests {
     };
 }
 
+#[test]
+#[ignore = "VM not yet implemented"]
+fn examples() {
+    rlox::test_utils::run_examples(BACKEND, "examples");
+}
+
 mod assignment {
     lox_tests!("assignment", [
         associativity,

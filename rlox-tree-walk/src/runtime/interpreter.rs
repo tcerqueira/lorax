@@ -491,26 +491,4 @@ mod tests {
             .expect("syntax error")
     }
 
-    #[test]
-    fn test_examples() {
-        let mut ast_arena = AstArena::default();
-
-        let lox_examples = std::fs::read_dir("../examples")
-            .unwrap()
-            .flatten()
-            .filter(|f| f.file_name().into_string().unwrap().ends_with(".lox"))
-            .map(|f| (f.path(), std::fs::read_to_string(f.path())));
-
-        for (path, src) in lox_examples {
-            let src = src.unwrap_or_else(|e| panic!("could not open example file {path:?}: {e:?}"));
-            let ast = program(&src, &mut ast_arena);
-
-            let mut interpreter = Interpreter::new();
-            Resolver::new(&mut interpreter, &ast_arena).resolve(&ast);
-
-            interpreter
-                .interpret(ast, &ast_arena)
-                .expect("program runs successfully");
-        }
-    }
 }
