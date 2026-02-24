@@ -24,9 +24,9 @@ fn parse_expectations(source: &str) -> Expectation {
             output_lines.push(value.to_string());
         } else if line.contains("// expect runtime error:") {
             has_runtime_error = true;
-        } else if line.contains("// [line") && line.contains("] Error") {
-            has_compile_error = true;
-        } else if line.contains("// Error at") {
+        } else if (line.contains("// [line") && line.contains("] Error"))
+            || line.contains("// Error at")
+        {
             has_compile_error = true;
         }
     }
@@ -57,7 +57,9 @@ pub fn run_test(bin: &str, backend: Backend, path: &str) {
     }
     cmd.arg(path);
 
-    let output = cmd.output().unwrap_or_else(|e| panic!("Failed to run rlox: {e}"));
+    let output = cmd
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run rlox: {e}"));
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout_lines: Vec<&str> = if stdout.is_empty() {
@@ -107,7 +109,11 @@ pub fn run_test(bin: &str, backend: Backend, path: &str) {
                 let actual_prefix = &stdout_lines[..stdout_lines.len().min(expected.len())];
                 assert_eq!(
                     actual_prefix,
-                    expected.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
+                    expected
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .as_slice(),
                     "Output before runtime error mismatch for {}",
                     path.display()
                 );

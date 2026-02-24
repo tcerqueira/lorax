@@ -366,7 +366,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{parsing::Parser, passes::resolver::Resolver};
+    use crate::parsing::Parser;
     use rlox_lexer::Scanner;
 
     use super::*;
@@ -479,16 +479,4 @@ mod tests {
             .expect_err("can't add strings and numbers");
         Ok(())
     }
-
-    fn program(source: &str, ast_arena: &mut AstArena) -> Vec<StmtId> {
-        let tokens = Scanner::new(source)
-            .scan_tokens()
-            .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
-            .expect("token error");
-        Parser::new(ast_arena, tokens)
-            .parse()
-            .inspect_err(|errs| errs.iter().for_each(|e| eprintln!("{e}")))
-            .expect("syntax error")
-    }
-
 }
