@@ -1,6 +1,6 @@
 use std::iter::FusedIterator;
 
-use rlox_report::{error::LexingError, *};
+use report::{error::LexingError, *};
 
 use super::tokens::*;
 

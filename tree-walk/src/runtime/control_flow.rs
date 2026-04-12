@@ -1,4 +1,4 @@
-use rlox_report::error::RuntimeError;
+use report::error::RuntimeError;
 use thiserror::Error;
 
 use crate::runtime::object::Object;

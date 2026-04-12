@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use rlox_report::error::RuntimeError;
+use report::error::RuntimeError;
 
 use crate::{
     parsing::{

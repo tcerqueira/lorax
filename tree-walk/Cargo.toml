@@ -1,11 +1,11 @@
 [package]
-name = "rlox-tree-walk"
+name = "tree-walk"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rlox-lexer = { path = "../rlox-lexer" }
-rlox-report = { path = "../rlox-report" }
+lexer = { path = "../lexer" }
+report = { path = "../report" }
 thiserror = "2"
 anyhow = "1"
 derive_more = { version = "2", features = ["from"] }

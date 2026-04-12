@@ -1,5 +1,5 @@
 use derive_more::From;
-use rlox_lexer::tokens::Token;
+use lexer::tokens::Token;
 
 use crate::parsing::ast::{AstNode, AstRef, ExprId, StmtId};
 

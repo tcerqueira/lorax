@@ -1,0 +1,10 @@
+[package]
+name = "vm"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+report = { path = "../report" }
+lexer = { path = "../lexer" }
+thiserror = "2"
+anyhow = "1"

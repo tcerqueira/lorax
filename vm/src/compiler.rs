@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 
-use rlox_lexer::{Scanner, tokens::Token};
-use rlox_report::error::LexingError;
+use lexer::{Scanner, tokens::Token};
+use report::error::LexingError;
 
 use crate::{chunk::Chunk, opcode::OpCode};
 

@@ -30,6 +30,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lexer"
+version = "0.1.0"
+dependencies = [
+ "report",
+ "thiserror",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -48,52 +56,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "report"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "thiserror",
+]
+
+[[package]]
 name = "rlox"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "rlox-report",
- "rlox-tree-walk",
- "rlox-vm",
+ "report",
  "thiserror",
-]
-
-[[package]]
-name = "rlox-lexer"
-version = "0.1.0"
-dependencies = [
- "rlox-report",
- "thiserror",
-]
-
-[[package]]
-name = "rlox-report"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "thiserror",
-]
-
-[[package]]
-name = "rlox-tree-walk"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "derive_more",
- "rlox-lexer",
- "rlox-report",
- "slotmap",
- "thiserror",
-]
-
-[[package]]
-name = "rlox-vm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "rlox-lexer",
- "rlox-report",
- "thiserror",
+ "tree-walk",
+ "vm",
 ]
 
 [[package]]
@@ -152,6 +130,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-walk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "derive_more",
+ "lexer",
+ "report",
+ "slotmap",
+ "thiserror",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -162,3 +152,13 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lexer",
+ "report",
+ "thiserror",
+]

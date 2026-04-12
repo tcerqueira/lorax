@@ -1,6 +1,6 @@
 use std::process::{ExitCode, Termination};
 
-use rlox_report::Error as InterpreterError;
+use report::Error as InterpreterError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

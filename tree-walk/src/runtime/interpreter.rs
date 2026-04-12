@@ -3,8 +3,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use rlox_lexer::tokens::TokenType;
-use rlox_report::{Span, Spanned, error::RuntimeError};
+use lexer::tokens::TokenType;
+use report::{Span, Spanned, error::RuntimeError};
 
 use super::{environment::*, object::*};
 use crate::{
@@ -367,7 +367,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::parsing::Parser;
-    use rlox_lexer::Scanner;
+    use lexer::Scanner;
 
     use super::*;
 

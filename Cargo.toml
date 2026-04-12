@@ -1,5 +1,5 @@
 [workspace]
-members = ["rlox-tree-walk", "rlox-vm", "rlox-lexer", "rlox-report"]
+members = ["tree-walk", "vm", "lexer", "report"]
 resolver = "3"
 
 [package]
@@ -8,8 +8,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rlox-report = { path = "rlox-report" }
-rlox-tree-walk = { path = "rlox-tree-walk" }
-rlox-vm = { path = "rlox-vm" }
+report = { path = "report" }
+tree-walk = { path = "tree-walk" }
+vm = { path = "vm" }
 thiserror = "2"
 anyhow = "1"

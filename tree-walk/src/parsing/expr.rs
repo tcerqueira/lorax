@@ -1,8 +1,8 @@
 use std::fmt::{self, Debug, Display};
 
 use derive_more::From;
-use rlox_lexer::tokens::Token;
-use rlox_report::{Span, Spanned};
+use lexer::tokens::Token;
+use report::{Span, Spanned};
 
 use super::visitor::ExprVisitor;
 use crate::{
@@ -347,7 +347,7 @@ impl Spanned for AstRef<'_, ExprLogical> {
 
 #[cfg(test)]
 mod tests {
-    use rlox_lexer::tok;
+    use lexer::tok;
 
     use super::*;
     use crate::parsing::ast::AstArena;

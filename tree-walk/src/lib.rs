@@ -5,8 +5,8 @@ use std::{
 };
 
 use anyhow::Context;
-use rlox_lexer::Scanner;
-use rlox_report::{Error, Reporter};
+use lexer::Scanner;
+use report::{Error, Reporter};
 
 use crate::{
     parsing::{ast::AstArena, *},

@@ -1,4 +1,4 @@
-use rlox_vm::{chunk::Chunk, opcode::OpCode, value::Value, vm::VirtualMachine};
+use vm::{chunk::Chunk, opcode::OpCode, value::Value, vm::VirtualMachine};
 
 fn main() -> anyhow::Result<()> {
     let mut chunk = Chunk::default();

@@ -134,8 +134,8 @@ pub fn run_examples(backend: Backend, dir: &str) {
 
     for path in &examples {
         let result = match backend {
-            Backend::TreeWalk => rlox_tree_walk::run_file(path),
-            Backend::Vm => rlox_vm::run_file(path),
+            Backend::TreeWalk => tree_walk::run_file(path),
+            Backend::Vm => vm::run_file(path),
         };
         result.unwrap_or_else(|e| panic!("{} failed: {e}", path.display()));
     }
