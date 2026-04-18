@@ -27,7 +27,7 @@ impl VirtualMachine {
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
-            // self.trace(ins);
+            self.trace(op);
             match op {
                 OpCode::NoOp => {}
                 OpCode::Return => {
@@ -90,7 +90,7 @@ impl VirtualMachine {
             .expect("compiler bug, nothing on top of the VM stack")
     }
 
-    #[expect(dead_code)]
+    // #[expect(dead_code)]
     fn trace(&self, op: OpCode) {
         println!("--> {:?}", op);
         print!("--> {:>16}", "stack: [ ");

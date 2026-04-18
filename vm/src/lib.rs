@@ -49,12 +49,13 @@ pub fn run_prompt() -> Result<(), Error> {
     Ok(())
 }
 
-fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
+pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let _reporter = Reporter::new(&source);
     let scanner = Scanner::new(&source);
 
     let mut compiler = Compiler::new(scanner);
     let chunk = compiler.compile()?;
+    // println!("{chunk:?}");
 
     match vm.run(chunk) {
         Err(VirtualMachineError::Decode(err)) => {

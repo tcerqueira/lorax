@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{Report, Span, Spanned};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 #[error("[line {}:{}] {}", (.span).line_start, .span.start, .message)]
 pub struct Error {
     pub span: Span,
