@@ -1,13 +1,14 @@
-use std::io::Cursor;
+use std::io::{Cursor, Seek};
 
 use report::error::RuntimeError;
 use thiserror::Error;
 
 use crate::{
     chunk::Chunk,
+    debug::LineInfo,
     enconding::{DecodeError, OpDecoder},
     opcode::{OpCode, OpDecodeError},
-    value::Value,
+    value::{Value, ValueError},
 };
 
 #[derive(Default)]
@@ -28,6 +29,14 @@ impl VirtualMachine {
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
             self.trace(op);
+            let invalid_operand_err = |_: ValueError| {
+                let span = chunk
+                    .get_line(pc.stream_position().unwrap() - 1)
+                    .map(LineInfo::to_span)
+                    .unwrap_or_default();
+                RuntimeError::custom(span, "invalid operand")
+            };
+
             match op {
                 OpCode::NoOp => {}
                 OpCode::Return => {
@@ -41,30 +50,30 @@ impl VirtualMachine {
                 }
                 OpCode::Neg => {
                     let x = self.stack_top();
-                    *x = -*x;
+                    *x = (-*x).map_err(invalid_operand_err)?;
                 }
                 OpCode::Add => {
                     let b = self.stack_pop();
                     let a = self.stack_pop();
-                    let res = a + b;
+                    let res = (a + b).map_err(invalid_operand_err)?;
                     self.stack_push(res);
                 }
                 OpCode::Sub => {
                     let b = self.stack_pop();
                     let a = self.stack_pop();
-                    let res = a - b;
+                    let res = (a - b).map_err(invalid_operand_err)?;
                     self.stack_push(res);
                 }
                 OpCode::Mul => {
                     let b = self.stack_pop();
                     let a = self.stack_pop();
-                    let res = a * b;
+                    let res = (a * b).map_err(invalid_operand_err)?;
                     self.stack_push(res);
                 }
                 OpCode::Div => {
                     let b = self.stack_pop();
                     let a = self.stack_pop();
-                    let res = a / b;
+                    let res = (a / b).map_err(invalid_operand_err)?;
                     self.stack_push(res);
                 }
             }

@@ -12,7 +12,7 @@ use lexer::Scanner;
 use report::{Error, Reporter};
 
 use crate::{
-    compiler::Compiler,
+    compiler::{CompileError, Compiler},
     vm::{VirtualMachine, VirtualMachineError},
 };
 
@@ -50,18 +50,28 @@ pub fn run_prompt() -> Result<(), Error> {
 }
 
 pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
-    let _reporter = Reporter::new(&source);
+    let reporter = Reporter::new(&source);
     let scanner = Scanner::new(&source);
 
     let mut compiler = Compiler::new(scanner);
-    let chunk = compiler.compile()?;
-    // println!("{chunk:?}");
+    let chunk = compiler
+        .compile()
+        .inspect_err(|err| match err {
+            CompileError::Lexing(e) => reporter.report(e),
+            CompileError::Parsing(e) => reporter.report(e),
+            CompileError::Other(e) => reporter.report_unspanned(e),
+        })?;
 
     match vm.run(chunk) {
         Err(VirtualMachineError::Decode(err)) => {
-            Err(anyhow::Error::new(err).context("malformed chunk").into())
+            let err = anyhow::Error::new(err).context("malformed chunk");
+            reporter.report_unspanned(&err);
+            Err(err.into())
         }
-        Err(VirtualMachineError::Runtime(err)) => Err(err.into()),
+        Err(VirtualMachineError::Runtime(err)) => {
+            reporter.report(&err);
+            Err(err.into())
+        }
         Ok(()) => Ok(()),
     }
 }

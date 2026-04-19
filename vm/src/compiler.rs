@@ -20,6 +20,16 @@ pub enum CompileError {
     Other(#[from] anyhow::Error),
 }
 
+impl From<CompileError> for report::Error {
+    fn from(err: CompileError) -> Self {
+        match err {
+            CompileError::Lexing(e) => e.into(),
+            CompileError::Parsing(e) => e.into(),
+            CompileError::Other(e) => e.into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum OpBinding {
     Postfix(u8),
@@ -78,7 +88,7 @@ impl<'s> Compiler<'s> {
         }
     }
 
-    pub fn compile(&mut self) -> Result<Chunk, anyhow::Error> {
+    pub fn compile(&mut self) -> Result<Chunk, CompileError> {
         self.expression()?;
         self.end();
         Ok(std::mem::take(&mut self.chunk))
@@ -160,7 +170,7 @@ impl<'s> Compiler<'s> {
             panic!("expected number token");
         };
         self.chunk
-            .write_constant_with_line(Value::new(num), span.line_start);
+            .write_constant_with_line(Value::number(num), span.line_start);
         Ok(())
     }
 
@@ -226,7 +236,6 @@ mod tests {
     #[test]
     fn challenge() {
         let _program = compile("(-1 + 2) * 3 - -4");
-        println!("{_program:?}")
     }
 
     #[test]

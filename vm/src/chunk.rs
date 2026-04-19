@@ -68,6 +68,16 @@ impl Chunk {
     pub fn constant(&self, addr: Addr) -> Value {
         self.constants[addr as usize]
     }
+
+    pub fn get_line(&self, byte_offset: u64) -> Option<&LineInfo> {
+        let i = self
+            .lines
+            .binary_search_by(|probe| probe.byte_range.start.cmp(&byte_offset))
+            .unwrap_or_else(|i| i.saturating_sub(1));
+        self.lines
+            .get(i)
+            .filter(|info| info.byte_range.contains(&byte_offset))
+    }
 }
 
 impl Debug for Chunk {

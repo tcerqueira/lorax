@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::ops::Range;
 use std::{fmt, io::Cursor};
 
+use report::Span;
+
 use crate::chunk::Chunk;
 use crate::enconding::OpDecoder;
 use crate::opcode::OpCode;
@@ -9,6 +11,17 @@ use crate::opcode::OpCode;
 pub struct LineInfo {
     pub line: u32,
     pub byte_range: Range<u64>,
+}
+
+impl LineInfo {
+    pub fn to_span(&self) -> Span {
+        Span {
+            start: 0,
+            end: 0,
+            line_start: self.line,
+            line_end: self.line,
+        }
+    }
 }
 
 pub struct Disassembler<'a, 'f> {
