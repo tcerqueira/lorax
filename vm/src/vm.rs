@@ -1,4 +1,7 @@
-use std::io::{Cursor, Seek};
+use std::{
+    io::{Cursor, Seek},
+    ops::{Add, Div, Mul, Sub},
+};
 
 use report::error::RuntimeError;
 use thiserror::Error;
@@ -53,31 +56,30 @@ impl VirtualMachine {
                     *x = (-*x).map_err(invalid_operand_err)?;
                 }
                 OpCode::Add => {
-                    let b = self.stack_pop();
-                    let a = self.stack_pop();
-                    let res = (a + b).map_err(invalid_operand_err)?;
-                    self.stack_push(res);
+                    self.binary_op(Value::add).map_err(invalid_operand_err)?;
                 }
                 OpCode::Sub => {
-                    let b = self.stack_pop();
-                    let a = self.stack_pop();
-                    let res = (a - b).map_err(invalid_operand_err)?;
-                    self.stack_push(res);
+                    self.binary_op(Value::sub).map_err(invalid_operand_err)?;
                 }
                 OpCode::Mul => {
-                    let b = self.stack_pop();
-                    let a = self.stack_pop();
-                    let res = (a * b).map_err(invalid_operand_err)?;
-                    self.stack_push(res);
+                    self.binary_op(Value::mul).map_err(invalid_operand_err)?;
                 }
                 OpCode::Div => {
-                    let b = self.stack_pop();
-                    let a = self.stack_pop();
-                    let res = (a / b).map_err(invalid_operand_err)?;
-                    self.stack_push(res);
+                    self.binary_op(Value::div).map_err(invalid_operand_err)?;
                 }
             }
         }
+        Ok(())
+    }
+
+    fn binary_op<F>(&mut self, op: F) -> Result<(), ValueError>
+    where
+        F: Fn(Value, Value) -> Result<Value, ValueError>,
+    {
+        let b = self.stack_pop();
+        let a = self.stack_pop();
+        let res = op(a, b)?;
+        self.stack_push(res);
         Ok(())
     }
 
@@ -96,6 +98,14 @@ impl VirtualMachine {
         // allows mutation in place
         self.stack
             .last_mut()
+            .expect("compiler bug, nothing on top of the VM stack")
+    }
+
+    #[expect(dead_code)]
+    fn stack_peek(&mut self, distance: usize) -> &mut Value {
+        let len = self.stack.len();
+        self.stack
+            .get_mut(len - distance)
             .expect("compiler bug, nothing on top of the VM stack")
     }
 
