@@ -27,7 +27,7 @@ impl<'s> Scanner<'s> {
         let mut errors = Vec::new();
         loop {
             match self.scan_token() {
-                Ok(Some(token)) => tokens.push(self.make_token(token)),
+                Ok(Some(token)) => tokens.push(token),
                 Ok(None) => break,
                 Err(err) => errors.push(err),
             }
@@ -47,7 +47,7 @@ impl<'s> Scanner<'s> {
         Ok(tokens)
     }
 
-    fn scan_token(&mut self) -> Result<Option<TokenType>, LexingError> {
+    fn scan_token(&mut self) -> Result<Option<Token>, LexingError> {
         let tok = loop {
             let Some(c) = self.advance_checked() else {
                 return Ok(None);
@@ -93,12 +93,13 @@ impl<'s> Scanner<'s> {
                     ));
                 }
             };
+            let span = self.make_span();
             // update source to the start of the next token
             self.source = self.rest_span();
             self.curr = 0;
 
             break match tok {
-                Some(tok) => tok,
+                Some(ty) => Token { ty, span },
                 None => continue,
             };
         };
@@ -106,9 +107,7 @@ impl<'s> Scanner<'s> {
     }
 
     pub fn next_token(&mut self) -> Option<Result<Token, LexingError>> {
-        self.scan_token()
-            .transpose()
-            .map(|t| t.map(|t| self.make_token(t)))
+        self.scan_token().transpose()
     }
 
     fn identifier(&mut self) -> Result<TokenType, LexingError> {
@@ -195,13 +194,6 @@ impl<'s> Scanner<'s> {
 
     fn peek_nth(&self, n: usize) -> Option<char> {
         self.rest_span().chars().nth(n)
-    }
-
-    fn make_token(&self, token: TokenType) -> Token {
-        Token {
-            ty: token,
-            span: self.make_span(),
-        }
     }
 
     fn curr_span(&self) -> &'s str {
