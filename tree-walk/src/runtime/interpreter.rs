@@ -197,7 +197,11 @@ impl ExprVisitor for &mut Interpreter {
         let right = this.evaluate(arena.expr_ref(expr.right))?;
         let value = match expr.op.ty {
             TokenType::Minus => Object::new(-right.try_downcast::<f64>().map_err(|e| {
-                RuntimeError::with_token(&expr.op, format!("Invalid operand: {e}"))
+                let right = arena.expr_ref(expr.right);
+                RuntimeError::with_token(
+                    expr.op.span().join(&right.span()),
+                    format!("Invalid operand: {e}"),
+                )
             })?),
             TokenType::Bang => Object::new(!right.is_truthy()),
             _ => panic!("Unexpected unary operator: {:?}", expr.op),

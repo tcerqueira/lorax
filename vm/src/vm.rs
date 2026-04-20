@@ -67,6 +67,15 @@ impl VirtualMachine {
                 OpCode::Div => {
                     self.binary_op(Value::div).map_err(invalid_operand_err)?;
                 }
+                OpCode::True => {
+                    self.stack_push(Value::boolean(true));
+                }
+                OpCode::False => {
+                    self.stack_push(Value::boolean(false));
+                }
+                OpCode::Nil => {
+                    self.stack_push(Value::nil());
+                }
             }
         }
         Ok(())

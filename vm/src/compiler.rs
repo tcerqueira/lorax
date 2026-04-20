@@ -139,6 +139,9 @@ impl<'s> Compiler<'s> {
             TokenType::LeftParen => self.grouping(tok),
             TokenType::Minus => self.unary(tok),
             TokenType::Number(_) => self.number(tok),
+            TokenType::True => self.literal(tok),
+            TokenType::False => self.literal(tok),
+            TokenType::Nil => self.literal(tok),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
@@ -199,6 +202,17 @@ impl<'s> Compiler<'s> {
             TokenType::Star => self.chunk.write_with_line(OpCode::Mul, line),
             TokenType::Slash => self.chunk.write_with_line(OpCode::Div, line),
             _ => panic!("expected op tokens: + - * /"),
+        }
+        Ok(())
+    }
+
+    fn literal(&mut self, tok: Token) -> Result<(), CompileError> {
+        let line = tok.span.line_start;
+        match tok.ty() {
+            TokenType::True => self.chunk.write_with_line(OpCode::True, line),
+            TokenType::False => self.chunk.write_with_line(OpCode::False, line),
+            TokenType::Nil => self.chunk.write_with_line(OpCode::Nil, line),
+            _ => panic!("expected literal tokens"),
         }
         Ok(())
     }

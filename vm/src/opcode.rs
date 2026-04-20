@@ -22,6 +22,9 @@ pub enum OpCode {
     Sub = 0x05,
     Mul = 0x06,
     Div = 0x07,
+    True = 0x08,
+    False = 0x09,
+    Nil = 0x0A,
 }
 
 impl Decode for OpCode {
@@ -39,6 +42,9 @@ impl Decode for OpCode {
             (0x05, _) => Ok((OpCode::Sub, 1)),
             (0x06, _) => Ok((OpCode::Mul, 1)),
             (0x07, _) => Ok((OpCode::Div, 1)),
+            (0x08, _) => Ok((OpCode::True, 1)),
+            (0x09, _) => Ok((OpCode::False, 1)),
+            (0x0A, _) => Ok((OpCode::Nil, 1)),
             (unknown, _) => Err(OpDecodeError::unknown(unknown)),
         }
     }
@@ -55,6 +61,9 @@ impl Encode for OpCode {
             OpCode::Sub => writer.write_all(&[0x05]).map(|_| 1),
             OpCode::Mul => writer.write_all(&[0x06]).map(|_| 1),
             OpCode::Div => writer.write_all(&[0x07]).map(|_| 1),
+            OpCode::True => writer.write_all(&[0x08]).map(|_| 1),
+            OpCode::False => writer.write_all(&[0x09]).map(|_| 1),
+            OpCode::Nil => writer.write_all(&[0x0A]).map(|_| 1),
         }
     }
 }
@@ -73,6 +82,9 @@ impl OpCode {
             OpCode::Sub => write!(f, "OP_SUB"),
             OpCode::Mul => write!(f, "OP_MUL"),
             OpCode::Div => write!(f, "OP_DIV"),
+            OpCode::True => write!(f, "OP_TRUE"),
+            OpCode::False => write!(f, "OP_FALSE"),
+            OpCode::Nil => write!(f, "OP_NIL"),
         }
     }
 }
