@@ -29,9 +29,10 @@ pub enum VirtualMachineError {
 
 impl VirtualMachine {
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
+        // println!("{chunk:?}");
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
-            self.trace(op);
+            // self.trace(op);
             let invalid_operand_err = |_: ValueError| {
                 let span = chunk
                     .get_line(pc.stream_position().unwrap() - 1)
@@ -43,30 +44,22 @@ impl VirtualMachine {
             match op {
                 OpCode::NoOp => {}
                 OpCode::Return => {
-                    let a = self.stack_pop();
-                    println!("{a}");
+                    let v = self.stack_pop();
+                    println!("{v}");
                     return Ok(());
                 }
                 OpCode::Constant(addr) => {
                     let constant = chunk.constant(addr);
-                    self.stack_push(constant);
+                    self.stack_push(constant.clone());
                 }
                 OpCode::Neg => {
-                    let x = self.stack_top();
-                    *x = (-*x).map_err(invalid_operand_err)?;
+                    let v = self.stack_top();
+                    *v = (-v.clone()).map_err(invalid_operand_err)?;
                 }
-                OpCode::Add => {
-                    self.binary_op(Value::add).map_err(invalid_operand_err)?;
-                }
-                OpCode::Sub => {
-                    self.binary_op(Value::sub).map_err(invalid_operand_err)?;
-                }
-                OpCode::Mul => {
-                    self.binary_op(Value::mul).map_err(invalid_operand_err)?;
-                }
-                OpCode::Div => {
-                    self.binary_op(Value::div).map_err(invalid_operand_err)?;
-                }
+                OpCode::Add => self.binary_op(Value::add).map_err(invalid_operand_err)?,
+                OpCode::Sub => self.binary_op(Value::sub).map_err(invalid_operand_err)?,
+                OpCode::Mul => self.binary_op(Value::mul).map_err(invalid_operand_err)?,
+                OpCode::Div => self.binary_op(Value::div).map_err(invalid_operand_err)?,
                 OpCode::True => {
                     self.stack_push(Value::boolean(true));
                 }
@@ -76,6 +69,19 @@ impl VirtualMachine {
                 OpCode::Nil => {
                     self.stack_push(Value::nil());
                 }
+                OpCode::Not => {
+                    let v = self.stack_top();
+                    *v = Value::Boolean(v.is_falsey());
+                }
+                OpCode::Equal => {
+                    let b = self.stack_pop();
+                    let a = self.stack_pop();
+                    self.stack_push(Value::boolean(a == b));
+                }
+                OpCode::Greater => self
+                    .binary_op(Value::greater)
+                    .map_err(invalid_operand_err)?,
+                OpCode::Less => self.binary_op(Value::less).map_err(invalid_operand_err)?,
             }
         }
         Ok(())
@@ -118,7 +124,7 @@ impl VirtualMachine {
             .expect("compiler bug, nothing on top of the VM stack")
     }
 
-    // #[expect(dead_code)]
+    #[expect(dead_code)]
     fn trace(&self, op: OpCode) {
         println!("--> {:?}", op);
         print!("--> {:>16}", "stack: [ ");

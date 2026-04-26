@@ -82,3 +82,28 @@ impl<'a, 'f> Disassembler<'a, 'f> {
         opcode.disassemble(self.f, self.chunk)
     }
 }
+
+impl OpCode {
+    pub fn disassemble(&self, f: &mut fmt::Formatter<'_>, chunk: &Chunk) -> fmt::Result {
+        match self {
+            OpCode::NoOp => write!(f, "NOOP"),
+            OpCode::Return => write!(f, "OP_RETURN"),
+            OpCode::Constant(addr) => {
+                let constant = &chunk.constants[*addr as usize];
+                write!(f, "{:<16} {:<4}[{addr:<03}]", "OP_CONSTANT", constant)
+            }
+            OpCode::Neg => write!(f, "OP_NEG"),
+            OpCode::Add => write!(f, "OP_ADD"),
+            OpCode::Sub => write!(f, "OP_SUB"),
+            OpCode::Mul => write!(f, "OP_MUL"),
+            OpCode::Div => write!(f, "OP_DIV"),
+            OpCode::True => write!(f, "OP_TRUE"),
+            OpCode::False => write!(f, "OP_FALSE"),
+            OpCode::Nil => write!(f, "OP_NIL"),
+            OpCode::Not => write!(f, "OP_NOT"),
+            OpCode::Equal => write!(f, "OP_EQUAL"),
+            OpCode::Greater => write!(f, "OP_GREATER"),
+            OpCode::Less => write!(f, "OP_LESS"),
+        }
+    }
+}

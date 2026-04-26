@@ -30,7 +30,7 @@ impl Chunk {
             .expect("what could go wrong :)");
     }
 
-    pub fn write_with_line(&mut self, instruction: OpCode, line: u32) {
+    pub fn write_with_line(&mut self, line: u32, instruction: OpCode) {
         let start_offset = self.code.len() as u64;
         self.write(instruction);
 
@@ -51,9 +51,9 @@ impl Chunk {
         self.write(OpCode::Constant(addr));
     }
 
-    pub fn write_constant_with_line(&mut self, value: Value, line: u32) {
+    pub fn write_constant_with_line(&mut self, line: u32, value: Value) {
         let addr = self.add_constant(value);
-        self.write_with_line(OpCode::Constant(addr), line);
+        self.write_with_line(line, OpCode::Constant(addr));
     }
 
     fn add_constant(&mut self, value: Value) -> Addr {
@@ -65,8 +65,8 @@ impl Chunk {
         (self.constants.len() - 1) as u8
     }
 
-    pub fn constant(&self, addr: Addr) -> Value {
-        self.constants[addr as usize]
+    pub fn constant(&self, addr: Addr) -> &Value {
+        &self.constants[addr as usize]
     }
 
     pub fn get_line(&self, byte_offset: u64) -> Option<&LineInfo> {
@@ -78,6 +78,18 @@ impl Chunk {
             .get(i)
             .filter(|info| info.byte_range.contains(&byte_offset))
     }
+}
+
+#[macro_export]
+macro_rules! write_with_line {
+    ($chunk:expr, $line:expr, $( $op:expr ),*) => {
+        {
+            let line = $line;
+            $(
+                $chunk.write_with_line(line, $op);
+            )*
+        }
+    };
 }
 
 impl Debug for Chunk {

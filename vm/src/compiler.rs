@@ -8,7 +8,7 @@ use report::error::ParsingError;
 use report::{Span, error::LexingError};
 use thiserror::Error;
 
-use crate::{chunk::Chunk, opcode::OpCode, value::Value};
+use crate::{chunk::Chunk, opcode::OpCode, value::Value, write_with_line};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -50,6 +50,7 @@ fn prefix_bp(tok: &TokenType) -> Option<u8> {
         // not sure what BP it should be
         TokenType::LeftParen => 0,
         TokenType::Minus => 15,
+        TokenType::Bang => 15,
         _ => return None,
     })
 }
@@ -63,11 +64,10 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
         // TokenType::Equal => (2, 1),
         // TokenType::Or => (3, 4),
         // TokenType::And => (5, 6),
-        // TokenType::EqualEqual | TokenType::BangEqual => (7, 8),
-        // TokenType::Less
-        // | TokenType::LessEqual
-        // | TokenType::Greater
-        // | TokenType::GreaterEqual => (9, 10),
+        TokenType::EqualEqual | TokenType::BangEqual => (7, 8),
+        TokenType::Less | TokenType::LessEqual | TokenType::Greater | TokenType::GreaterEqual => {
+            (9, 10)
+        }
         TokenType::Plus | TokenType::Minus => (11, 12),
         TokenType::Star | TokenType::Slash => (13, 14),
         // TokenType::Dot | TokenType::LeftParen => (16, 15),
@@ -137,20 +137,25 @@ impl<'s> Compiler<'s> {
     fn parse_prefix(&mut self, tok: Token) -> Result<(), CompileError> {
         match tok.ty() {
             TokenType::LeftParen => self.grouping(tok),
-            TokenType::Minus => self.unary(tok),
+            TokenType::Minus | TokenType::Bang => self.unary(tok),
             TokenType::Number(_) => self.number(tok),
-            TokenType::True => self.literal(tok),
-            TokenType::False => self.literal(tok),
-            TokenType::Nil => self.literal(tok),
+            TokenType::True | TokenType::False | TokenType::Nil => self.literal(tok),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
 
     fn parse_infix(&mut self, tok: Token) -> Result<(), CompileError> {
         match tok.ty() {
-            TokenType::Plus | TokenType::Minus | TokenType::Star | TokenType::Slash => {
-                self.binary(tok)
-            }
+            TokenType::Plus
+            | TokenType::Minus
+            | TokenType::Star
+            | TokenType::Slash
+            | TokenType::BangEqual
+            | TokenType::EqualEqual
+            | TokenType::Greater
+            | TokenType::GreaterEqual
+            | TokenType::Less
+            | TokenType::LessEqual => self.binary(tok),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
@@ -173,7 +178,7 @@ impl<'s> Compiler<'s> {
             panic!("expected number token");
         };
         self.chunk
-            .write_constant_with_line(Value::number(num), span.line_start);
+            .write_constant_with_line(span.line_start, Value::number(num));
         Ok(())
     }
 
@@ -186,8 +191,14 @@ impl<'s> Compiler<'s> {
     fn unary(&mut self, op: Token) -> Result<(), CompileError> {
         let r_bp = prefix_bp(op.ty()).expect("expected infix op token");
         self.parse_bp(r_bp)?;
-        assert_eq!(op.ty(), &TokenType::Minus, "expected minus token as prefix");
-        self.chunk.write_with_line(OpCode::Neg, op.span.line_start);
+
+        let line = op.span.line_start;
+        match op.ty() {
+            TokenType::Minus => self.chunk.write_with_line(line, OpCode::Neg),
+            TokenType::Bang => self.chunk.write_with_line(line, OpCode::Not),
+            _ => panic!("expected minus token as prefix"),
+        };
+
         Ok(())
     }
 
@@ -196,22 +207,29 @@ impl<'s> Compiler<'s> {
         self.parse_bp(r_bp)?;
 
         let line = op.span.line_start;
+        #[rustfmt::skip]
         match op.ty() {
-            TokenType::Plus => self.chunk.write_with_line(OpCode::Add, line),
-            TokenType::Minus => self.chunk.write_with_line(OpCode::Sub, line),
-            TokenType::Star => self.chunk.write_with_line(OpCode::Mul, line),
-            TokenType::Slash => self.chunk.write_with_line(OpCode::Div, line),
+            TokenType::Plus => self.chunk.write_with_line(line, OpCode::Add),
+            TokenType::Minus => self.chunk.write_with_line(line, OpCode::Sub),
+            TokenType::Star => self.chunk.write_with_line(line, OpCode::Mul),
+            TokenType::Slash => self.chunk.write_with_line(line, OpCode::Div),
+            TokenType::BangEqual => write_with_line!(self.chunk, line, OpCode::Equal, OpCode::Not),
+            TokenType::EqualEqual => self.chunk.write_with_line(line, OpCode::Equal),
+            TokenType::Greater => self.chunk.write_with_line(line, OpCode::Greater),
+            TokenType::GreaterEqual => write_with_line!(self.chunk, line, OpCode::Less, OpCode::Not),
+            TokenType::Less => self.chunk.write_with_line(line, OpCode::Less),
+            TokenType::LessEqual => write_with_line!(self.chunk, line, OpCode::Greater, OpCode::Not),
             _ => panic!("expected op tokens: + - * /"),
-        }
+        };
         Ok(())
     }
 
     fn literal(&mut self, tok: Token) -> Result<(), CompileError> {
         let line = tok.span.line_start;
         match tok.ty() {
-            TokenType::True => self.chunk.write_with_line(OpCode::True, line),
-            TokenType::False => self.chunk.write_with_line(OpCode::False, line),
-            TokenType::Nil => self.chunk.write_with_line(OpCode::Nil, line),
+            TokenType::True => self.chunk.write_with_line(line, OpCode::True),
+            TokenType::False => self.chunk.write_with_line(line, OpCode::False),
+            TokenType::Nil => self.chunk.write_with_line(line, OpCode::Nil),
             _ => panic!("expected literal tokens"),
         }
         Ok(())
@@ -265,5 +283,10 @@ mod tests {
     #[test]
     fn grouping() {
         let _program = compile("2 * (3 + 4)");
+    }
+
+    #[test]
+    fn logical() {
+        let _program = compile("!(5 - 4 > 3 * 2 == !nil)");
     }
 }

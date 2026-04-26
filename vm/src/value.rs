@@ -1,11 +1,13 @@
 use std::{
+    cmp::Ordering,
     fmt::{self, Debug, Display},
+    mem,
     ops::{Add, Div, Mul, Neg, Sub},
 };
 
 pub struct ValueError;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Nil,
     Boolean(bool),
@@ -23,6 +25,26 @@ impl Value {
 
     pub fn number(value: f64) -> Self {
         Self::Number(value)
+    }
+
+    pub fn is_falsey(&self) -> bool {
+        !match self {
+            Self::Boolean(b) => *b,
+            Self::Nil => false,
+            _ => false,
+        }
+    }
+
+    pub fn greater(self, other: Self) -> Result<Self, ValueError> {
+        Self::partial_cmp(&self, &other)
+            .map(|ordering| Self::boolean(ordering == Ordering::Greater))
+            .ok_or(ValueError)
+    }
+
+    pub fn less(self, other: Self) -> Result<Self, ValueError> {
+        Self::partial_cmp(&self, &other)
+            .map(|ordering| Self::boolean(ordering == Ordering::Less))
+            .ok_or(ValueError)
     }
 }
 
@@ -77,6 +99,34 @@ impl Div for Value {
         match (self, rhs) {
             (Self::Number(x), Self::Number(y)) => Ok(Self::number(x / y)),
             _ => Err(ValueError),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        if mem::discriminant(self) != mem::discriminant(other) {
+            return false;
+        }
+        match (self, other) {
+            (Self::Nil, Self::Nil) => true,
+            (Self::Boolean(a), Self::Boolean(b)) => a == b,
+            (Self::Number(a), Self::Number(b)) => a == b,
+            _ => unreachable!("missing impl for PartialEq"),
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if mem::discriminant(self) != mem::discriminant(other) {
+            return None;
+        }
+        match (self, other) {
+            (Value::Nil, Value::Nil) => Some(Ordering::Equal),
+            (Value::Boolean(a), Value::Boolean(b)) => a.partial_cmp(b),
+            (Value::Number(a), Value::Number(b)) => a.partial_cmp(b),
+            _ => unreachable!("missing impl for PartialOrd"),
         }
     }
 }

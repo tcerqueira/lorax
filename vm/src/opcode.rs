@@ -1,12 +1,11 @@
 use std::{
-    fmt::{self, Debug},
+    fmt::Debug,
     io::{self, Write},
 };
 
 use thiserror::Error;
 
 use crate::{
-    chunk::Chunk,
     enconding::{Decode, Encode},
     value::Addr,
 };
@@ -25,6 +24,10 @@ pub enum OpCode {
     True = 0x08,
     False = 0x09,
     Nil = 0x0A,
+    Not = 0x0B,
+    Equal = 0x0C,
+    Greater = 0x0D,
+    Less = 0x0E,
 }
 
 impl Decode for OpCode {
@@ -45,6 +48,10 @@ impl Decode for OpCode {
             (0x08, _) => Ok((OpCode::True, 1)),
             (0x09, _) => Ok((OpCode::False, 1)),
             (0x0A, _) => Ok((OpCode::Nil, 1)),
+            (0x0B, _) => Ok((OpCode::Not, 1)),
+            (0x0C, _) => Ok((OpCode::Equal, 1)),
+            (0x0D, _) => Ok((OpCode::Greater, 1)),
+            (0x0E, _) => Ok((OpCode::Less, 1)),
             (unknown, _) => Err(OpDecodeError::unknown(unknown)),
         }
     }
@@ -52,39 +59,26 @@ impl Decode for OpCode {
 
 impl Encode for OpCode {
     fn encode<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<usize> {
+        let mut write = |buf: &[u8]| {
+            let len = buf.len();
+            writer.write_all(buf).map(|_| len)
+        };
         match self {
-            OpCode::NoOp => writer.write_all(&[0x00]).map(|_| 1),
-            OpCode::Return => writer.write_all(&[0x01]).map(|_| 1),
-            OpCode::Constant(addr) => writer.write_all(&[0x02, *addr]).map(|_| 2),
-            OpCode::Neg => writer.write_all(&[0x03]).map(|_| 1),
-            OpCode::Add => writer.write_all(&[0x04]).map(|_| 1),
-            OpCode::Sub => writer.write_all(&[0x05]).map(|_| 1),
-            OpCode::Mul => writer.write_all(&[0x06]).map(|_| 1),
-            OpCode::Div => writer.write_all(&[0x07]).map(|_| 1),
-            OpCode::True => writer.write_all(&[0x08]).map(|_| 1),
-            OpCode::False => writer.write_all(&[0x09]).map(|_| 1),
-            OpCode::Nil => writer.write_all(&[0x0A]).map(|_| 1),
-        }
-    }
-}
-
-impl OpCode {
-    pub fn disassemble(&self, f: &mut fmt::Formatter<'_>, chunk: &Chunk) -> fmt::Result {
-        match self {
-            OpCode::NoOp => write!(f, "NOOP"),
-            OpCode::Return => write!(f, "OP_RETURN"),
-            OpCode::Constant(addr) => {
-                let constant = chunk.constants[*addr as usize];
-                write!(f, "{:<16} {:<4}[{addr:<03}]", "OP_CONSTANT", constant)
-            }
-            OpCode::Neg => write!(f, "OP_NEG"),
-            OpCode::Add => write!(f, "OP_ADD"),
-            OpCode::Sub => write!(f, "OP_SUB"),
-            OpCode::Mul => write!(f, "OP_MUL"),
-            OpCode::Div => write!(f, "OP_DIV"),
-            OpCode::True => write!(f, "OP_TRUE"),
-            OpCode::False => write!(f, "OP_FALSE"),
-            OpCode::Nil => write!(f, "OP_NIL"),
+            OpCode::NoOp => write(&[0x00]),
+            OpCode::Return => write(&[0x01]),
+            OpCode::Constant(addr) => write(&[0x02, *addr]),
+            OpCode::Neg => write(&[0x03]),
+            OpCode::Add => write(&[0x04]),
+            OpCode::Sub => write(&[0x05]),
+            OpCode::Mul => write(&[0x06]),
+            OpCode::Div => write(&[0x07]),
+            OpCode::True => write(&[0x08]),
+            OpCode::False => write(&[0x09]),
+            OpCode::Nil => write(&[0x0A]),
+            OpCode::Not => write(&[0x0B]),
+            OpCode::Equal => write(&[0x0C]),
+            OpCode::Greater => write(&[0x0D]),
+            OpCode::Less => write(&[0x0E]),
         }
     }
 }
