@@ -8,3 +8,4 @@ report = { path = "../report" }
 lexer = { path = "../lexer" }
 thiserror = "2"
 anyhow = "1"
+intrusive-collections = "0.10"

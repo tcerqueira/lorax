@@ -10,6 +10,7 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::{DecodeError, OpDecoder},
+    object::pool::ObjectPool,
     opcode::{OpCode, OpDecodeError},
     value::{Value, ValueError},
 };
@@ -17,6 +18,7 @@ use crate::{
 #[derive(Default)]
 pub struct VirtualMachine {
     stack: Vec<Value>,
+    _heap: ObjectPool,
 }
 
 #[derive(Debug, Error)]

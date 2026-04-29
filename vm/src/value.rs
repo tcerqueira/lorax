@@ -5,6 +5,8 @@ use std::{
     ops::{Add, Div, Mul, Neg, Sub},
 };
 
+use crate::object::HeapObject;
+
 pub struct ValueError;
 
 #[derive(Debug, Clone)]
@@ -12,6 +14,7 @@ pub enum Value {
     Nil,
     Boolean(bool),
     Number(f64),
+    Object(HeapObject),
 }
 
 impl Value {
@@ -37,13 +40,13 @@ impl Value {
 
     pub fn greater(self, other: Self) -> Result<Self, ValueError> {
         Self::partial_cmp(&self, &other)
-            .map(|ordering| Self::boolean(ordering == Ordering::Greater))
+            .map(|ord| Self::boolean(ord == Ordering::Greater))
             .ok_or(ValueError)
     }
 
     pub fn less(self, other: Self) -> Result<Self, ValueError> {
         Self::partial_cmp(&self, &other)
-            .map(|ordering| Self::boolean(ordering == Ordering::Less))
+            .map(|ord| Self::boolean(ord == Ordering::Less))
             .ok_or(ValueError)
     }
 }
@@ -137,6 +140,7 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(n) => write!(f, "{n}"),
+            Value::Object(_obj) => todo!(),
         }
     }
 }

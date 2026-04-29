@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
+name = "autocfg"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
 name = "derive_more"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -30,11 +36,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "intrusive-collections"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0375b6b871e424e9e052e1107d57dc6952f77ff882bd4bf74333a833779bab"
+dependencies = [
+ "memoffset",
+]
+
+[[package]]
 name = "lexer"
 version = "0.1.0"
 dependencies = [
  "report",
  "thiserror",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -158,6 +182,7 @@ name = "vm"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "intrusive-collections",
  "lexer",
  "report",
  "thiserror",

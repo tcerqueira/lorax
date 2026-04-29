@@ -29,6 +29,7 @@
           extensions = [
             "rust-src"
             "rust-analyzer"
+            "miri"
           ];
         };
       in

@@ -1,5 +1,7 @@
 #![feature(formatting_options)]
 #![feature(error_iter)]
+#![feature(ptr_metadata)]
+#![feature(arbitrary_self_types)]
 
 use std::{
     fs,
@@ -20,6 +22,7 @@ pub mod chunk;
 pub mod compiler;
 pub(crate) mod debug;
 pub(crate) mod enconding;
+pub mod object;
 pub mod opcode;
 pub mod value;
 pub mod vm;
@@ -54,13 +57,11 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let scanner = Scanner::new(&source);
 
     let mut compiler = Compiler::new(scanner);
-    let chunk = compiler
-        .compile()
-        .inspect_err(|err| match err {
-            CompileError::Lexing(e) => reporter.report(e),
-            CompileError::Parsing(e) => reporter.report(e),
-            CompileError::Other(e) => reporter.report_unspanned(e),
-        })?;
+    let chunk = compiler.compile().inspect_err(|err| match err {
+        CompileError::Lexing(e) => reporter.report(e),
+        CompileError::Parsing(e) => reporter.report(e),
+        CompileError::Other(e) => reporter.report_unspanned(e),
+    })?;
 
     match vm.run(chunk) {
         Err(VirtualMachineError::Decode(err)) => {
