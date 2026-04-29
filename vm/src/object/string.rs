@@ -21,6 +21,14 @@ impl StringObj {
         let bytes = s.as_bytes();
         let layout = Self::layout(bytes.len());
 
+        // SAFETY: `alloc::alloc(layout)` returns either null (handled) or an
+        // uninitialized allocation of the requested layout. The fat pointer is
+        // built with the correct slice length, so field offsets match the
+        // layout. Each field is initialized exactly once via `ptr::write`
+        // (skipping `Drop` of uninitialized data); `copy_nonoverlapping` fills
+        // `buf` from a non-overlapping source. After full initialization,
+        // `Box::from_raw` takes ownership; on drop, `Box` deallocates using
+        // `Layout::for_value` on the fat pointer, which matches `Self::layout`.
         unsafe {
             let raw = alloc::alloc(layout);
             if raw.is_null() {
@@ -57,8 +65,13 @@ impl StringObj {
     }
 }
 
+// SAFETY: `StringObj` is `#[repr(C)]` with `Object` (`obj`) as its first
+// field, so an `Object` header at offset 0 is layout-compatible.
 unsafe impl ObjectKind for StringObj {
     unsafe fn from_object_raw(obj: *mut Object) -> *mut Self {
+        // SAFETY: caller's contract guarantees `obj` points to a `StringObj`.
+        // `#[repr(C)]` makes `mem::offset_of!(StringObj, len)` a valid byte
+        // offset to a properly-aligned `usize`, so `ptr::read` is sound.
         let len = unsafe { ptr::read(obj.byte_add(mem::offset_of!(StringObj, len)).cast()) };
         ptr::from_raw_parts_mut(obj.cast::<()>(), len)
     }
@@ -68,6 +81,8 @@ impl Deref for StringObj {
     type Target = str;
 
     fn deref(&self) -> &str {
+        // SAFETY: `buf` is only ever populated from `&str` bytes in `new`, so
+        // its contents are guaranteed to be valid UTF-8.
         unsafe { std::str::from_utf8_unchecked(&self.buf) }
     }
 }
@@ -137,10 +152,15 @@ mod tests {
     fn upcast_downcast_roundtrip() {
         let owned: OwnedObject = StringObj::new("roundtrip").upcast();
         let obj_ref = owned.into_ref();
+        // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
+        // dynamic kind is `StringObj`.
         let downcast = unsafe { obj_ref.downcast::<StringObj>() };
         assert_eq!(&**downcast, "roundtrip");
 
         let raw = UnsafeRef::into_raw(downcast);
+        // SAFETY: `raw` traces back to `Box::into_raw(StringObj::new(...))` via
+        // the upcast/downcast roundtrip, so `Box::from_raw` is the matching
+        // ownership transfer.
         drop(unsafe { Box::from_raw(raw) });
     }
 }
