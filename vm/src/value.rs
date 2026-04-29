@@ -5,7 +5,9 @@ use std::{
     ops::{Add, Div, Mul, Neg, Sub},
 };
 
-use crate::object::HeapObject;
+use intrusive_collections::UnsafeRef;
+
+use crate::object::Object;
 
 pub struct ValueError;
 
@@ -14,7 +16,7 @@ pub enum Value {
     Nil,
     Boolean(bool),
     Number(f64),
-    Object(HeapObject),
+    Object(UnsafeRef<Object>),
 }
 
 impl Value {

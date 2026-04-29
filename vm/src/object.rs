@@ -1,4 +1,9 @@
-use std::{fmt::Debug, mem, ops::Deref, ptr::NonNull};
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    mem,
+    ops::Deref,
+    ptr::NonNull,
+};
 
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
@@ -7,15 +12,26 @@ use crate::object::string::StringObj;
 pub mod pool;
 pub mod string;
 
-pub trait ObjectCast {
-    fn upcast(self: Box<Self>) -> OwnedObject;
+/// A concrete object kind embedded behind an [`Object`] header.
+///
+/// # Safety
+///
+/// Implementor must be `#[repr(C)]` with [`Object`] as the first field,
+/// no padding before it.
+pub unsafe trait ObjectKind {
+    /// Recover `*mut Self` from `*mut Object`.
+    ///
     /// # Safety
     ///
-    /// The object must be the kind of `Self`.
-    unsafe fn downcast(obj: UnsafeRef<Object>) -> UnsafeRef<Self>;
-}
+    /// `obj` must point to an [`Object`] of dynamic kind `Self`.
+    unsafe fn from_object_raw(obj: *mut Object) -> *mut Self;
 
-pub type HeapObject = UnsafeRef<Object>;
+    /// Take ownership of a `Box<Self>` as an [`OwnedObject`].
+    fn upcast(self: Box<Self>) -> OwnedObject {
+        let raw = Box::into_raw(self);
+        unsafe { OwnedObject::from_raw(raw.cast::<Object>()) }
+    }
+}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -36,6 +52,44 @@ impl Object {
         Self {
             kind: ObjKind::String,
             link: SinglyLinkedListLink::new(),
+        }
+    }
+
+    /// Downcast a shared reference to a concrete kind.
+    ///
+    /// # Safety
+    ///
+    /// The Object's dynamic kind must be `T`.
+    pub unsafe fn downcast_ref<T: ObjectKind + ?Sized>(&self) -> &T {
+        unsafe { &*T::from_object_raw(self as *const Self as *mut Self) }
+    }
+
+    /// Downcast a unique reference to a concrete kind.
+    ///
+    /// # Safety
+    ///
+    /// The Object's dynamic kind must be `T`.
+    pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(&mut self) -> &mut T {
+        unsafe { &mut *T::from_object_raw(self) }
+    }
+
+    /// Downcast a unsafe reference to a concrete kind.
+    ///
+    /// # Safety
+    ///
+    /// The Object's dynamic kind must be `T`.
+    pub unsafe fn downcast<T: ObjectKind + ?Sized>(self: UnsafeRef<Self>) -> UnsafeRef<T> {
+        let raw = UnsafeRef::into_raw(self);
+        unsafe { UnsafeRef::from_raw(T::from_object_raw(raw)) }
+    }
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            ObjKind::String => {
+                <StringObj as Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
+            }
         }
     }
 }
@@ -79,14 +133,23 @@ impl AsRef<Object> for OwnedObject {
     }
 }
 
+// impl ObjectPtr for OwnedObject {
+//     type Of<T: ObjectKind + ?Sized> = Box<T>;
+
+//     fn into_raw(self) -> *mut Object {
+//         OwnedObject::into_raw(self)
+//     }
+
+//     unsafe fn from_concrete<T: ObjectKind + ?Sized>(ptr: *mut T) -> Box<T> {
+//         unsafe { Box::from_raw(ptr) }
+//     }
+// }
+
 impl Drop for OwnedObject {
     fn drop(&mut self) {
-        let obj_ref = unsafe { UnsafeRef::from_raw(self.0.as_ptr()) };
+        let raw = self.0.as_ptr();
         match &self.kind {
-            ObjKind::String => {
-                let s = unsafe { StringObj::downcast(obj_ref) };
-                unsafe { s.free() };
-            }
+            ObjKind::String => drop(unsafe { Box::from_raw(StringObj::from_object_raw(raw)) }),
         }
     }
 }

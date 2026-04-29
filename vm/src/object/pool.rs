@@ -1,6 +1,6 @@
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
 
-use crate::object::{Object, ObjectAdapter, ObjectCast, OwnedObject};
+use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject};
 
 #[derive(Default)]
 pub struct ObjectPool(SinglyLinkedList<ObjectAdapter>);
@@ -10,7 +10,7 @@ impl ObjectPool {
         Self::default()
     }
 
-    pub fn add<T: ObjectCast + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
+    pub fn add<T: ObjectKind + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
         let obj_ref = obj.upcast().into_ref();
         self.0.push_front(obj_ref.clone());
         obj_ref
@@ -60,7 +60,7 @@ mod tests {
         let mut pool = ObjectPool::new();
         let obj_ref = pool.add(StringObj::new("alive"));
         // Downcast and read contents through the ref while pool still owns it.
-        let s = unsafe { StringObj::downcast(obj_ref) };
+        let s = unsafe { obj_ref.downcast::<StringObj>() };
         assert_eq!(&**s, "alive");
         // Don't drop `s` — pool owns the alloc.
         let _ = UnsafeRef::into_raw(s);

@@ -1,13 +1,12 @@
 use std::{
     alloc::{self, Layout},
+    fmt::Display,
     mem,
     ops::Deref,
     ptr,
 };
 
-use intrusive_collections::UnsafeRef;
-
-use crate::object::{Object, ObjectCast, OwnedObject};
+use crate::object::{Object, ObjectKind};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -49,15 +48,6 @@ impl StringObj {
         Self::as_ref(self)
     }
 
-    /// # Safety
-    ///
-    /// `self` must be the unique owning reference to a heap-allocated `StringObj`
-    /// originally produced by `Self::new`. After this call, the allocation is freed.
-    pub(crate) unsafe fn free(self: UnsafeRef<Self>) {
-        let raw = UnsafeRef::into_raw(self);
-        drop(unsafe { Box::from_raw(raw) });
-    }
-
     fn layout(len: usize) -> Layout {
         let (l, _) = Layout::new::<Object>()
             .extend(Layout::new::<usize>())
@@ -67,17 +57,10 @@ impl StringObj {
     }
 }
 
-impl ObjectCast for StringObj {
-    fn upcast(self: Box<Self>) -> OwnedObject {
-        let fat: *mut StringObj = Box::into_raw(self);
-        unsafe { OwnedObject::from_raw(fat.cast()) }
-    }
-
-    unsafe fn downcast(obj: UnsafeRef<Object>) -> UnsafeRef<Self> {
-        let thin: *const Object = UnsafeRef::into_raw(obj);
-        let len = unsafe { ptr::read(thin.byte_add(mem::offset_of!(StringObj, len)).cast()) };
-        let fat: *const StringObj = ptr::from_raw_parts(thin.cast::<()>(), len);
-        unsafe { UnsafeRef::from_raw(fat) }
+unsafe impl ObjectKind for StringObj {
+    unsafe fn from_object_raw(obj: *mut Object) -> *mut Self {
+        let len = unsafe { ptr::read(obj.byte_add(mem::offset_of!(StringObj, len)).cast()) };
+        ptr::from_raw_parts_mut(obj.cast::<()>(), len)
     }
 }
 
@@ -101,8 +84,16 @@ impl AsRef<[u8]> for StringObj {
     }
 }
 
+impl Display for StringObj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use intrusive_collections::UnsafeRef;
+
     use super::*;
     use crate::object::OwnedObject;
 
@@ -146,7 +137,7 @@ mod tests {
     fn upcast_downcast_roundtrip() {
         let owned: OwnedObject = StringObj::new("roundtrip").upcast();
         let obj_ref = owned.into_ref();
-        let downcast = unsafe { StringObj::downcast(obj_ref) };
+        let downcast = unsafe { obj_ref.downcast::<StringObj>() };
         assert_eq!(&**downcast, "roundtrip");
 
         let raw = UnsafeRef::into_raw(downcast);
