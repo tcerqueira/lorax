@@ -2,6 +2,7 @@
 #![feature(error_iter)]
 #![feature(ptr_metadata)]
 #![feature(arbitrary_self_types)]
+#![feature(if_let_guard)]
 
 use std::{
     fs,
@@ -56,7 +57,7 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let reporter = Reporter::new(&source);
     let scanner = Scanner::new(&source);
 
-    let mut compiler = Compiler::new(scanner);
+    let mut compiler = Compiler::new(scanner, vm.heap());
     let chunk = compiler.compile().inspect_err(|err| match err {
         CompileError::Lexing(e) => reporter.report(e),
         CompileError::Parsing(e) => reporter.report(e),

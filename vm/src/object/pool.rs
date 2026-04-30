@@ -41,21 +41,21 @@ mod tests {
     #[test]
     fn add_one_and_drop_pool() {
         let mut pool = ObjectPool::new();
-        pool.add(StringObj::new("one"));
+        pool.add(StringObj::boxed("one"));
     }
 
     #[test]
     fn add_many_and_drop_pool() {
         let mut pool = ObjectPool::new();
         for i in 0..32 {
-            pool.add(StringObj::new(&format!("str-{i}")));
+            pool.add(StringObj::boxed(&format!("str-{i}")));
         }
     }
 
     #[test]
     fn returned_ref_kind_is_string() {
         let mut pool = ObjectPool::new();
-        let obj_ref = pool.add(StringObj::new("ref"));
+        let obj_ref = pool.add(StringObj::boxed("ref"));
         match &obj_ref.kind {
             ObjKind::String => {}
         }
@@ -65,7 +65,7 @@ mod tests {
     fn returned_ref_is_alive_until_pool_drop() {
         // The UnsafeRef returned by `add` should remain valid for the pool's lifetime.
         let mut pool = ObjectPool::new();
-        let obj_ref = pool.add(StringObj::new("alive"));
+        let obj_ref = pool.add(StringObj::boxed("alive"));
         // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
         // dynamic kind is `StringObj`.
         let s = unsafe { obj_ref.downcast::<StringObj>() };

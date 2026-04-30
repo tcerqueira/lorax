@@ -8,7 +8,13 @@ use report::error::ParsingError;
 use report::{Span, error::LexingError};
 use thiserror::Error;
 
-use crate::{chunk::Chunk, opcode::OpCode, value::Value, write_with_line};
+use crate::{
+    chunk::Chunk,
+    object::{pool::ObjectPool, string::StringObj},
+    opcode::OpCode,
+    value::Value,
+    write_with_line,
+};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -75,16 +81,18 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     })
 }
 
-pub struct Compiler<'s> {
+pub struct Compiler<'s, 'h> {
     scanner: Peekable<Scanner<'s>>,
     chunk: Chunk,
+    heap: &'h mut ObjectPool,
 }
 
-impl<'s> Compiler<'s> {
-    pub fn new(scanner: Scanner<'s>) -> Self {
+impl<'s, 'h> Compiler<'s, 'h> {
+    pub fn new(scanner: Scanner<'s>, heap: &'h mut ObjectPool) -> Self {
         Self {
             scanner: scanner.peekable(),
             chunk: Chunk::default(),
+            heap,
         }
     }
 
@@ -139,6 +147,7 @@ impl<'s> Compiler<'s> {
             TokenType::LeftParen => self.grouping(tok),
             TokenType::Minus | TokenType::Bang => self.unary(tok),
             TokenType::Number(_) => self.number(tok),
+            TokenType::String(_) => self.string(tok),
             TokenType::True | TokenType::False | TokenType::Nil => self.literal(tok),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
@@ -175,10 +184,24 @@ impl<'s> Compiler<'s> {
             span,
         } = tok
         else {
-            panic!("expected number token");
+            unreachable!("expected number token");
         };
         self.chunk
             .write_constant_with_line(span.line_start, Value::number(num));
+        Ok(())
+    }
+
+    fn string(&mut self, tok: Token) -> Result<(), CompileError> {
+        let Token {
+            ty: TokenType::String(s),
+            span,
+        } = tok
+        else {
+            unreachable!("expected string token");
+        };
+        let obj = self.heap.add(StringObj::boxed(&s));
+        self.chunk
+            .write_constant_with_line(span.line_start, Value::object(obj));
         Ok(())
     }
 
@@ -259,10 +282,13 @@ impl<'s> Compiler<'s> {
 mod tests {
     use lexer::Scanner;
 
-    use crate::{chunk::Chunk, compiler::Compiler};
+    use crate::{chunk::Chunk, compiler::Compiler, object::pool::ObjectPool};
 
     fn compile(src: &str) -> Chunk {
-        Compiler::new(Scanner::new(src)).compile().unwrap()
+        let mut heap = ObjectPool::new();
+        Compiler::new(Scanner::new(src), &mut heap)
+            .compile()
+            .unwrap()
     }
 
     #[test]

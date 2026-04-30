@@ -10,7 +10,7 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::{DecodeError, OpDecoder},
-    object::pool::ObjectPool,
+    object::{ObjKind, pool::ObjectPool, string::StringObj},
     opcode::{OpCode, OpDecodeError},
     value::{Value, ValueError},
 };
@@ -18,7 +18,7 @@ use crate::{
 #[derive(Default)]
 pub struct VirtualMachine {
     stack: Vec<Value>,
-    _heap: ObjectPool,
+    heap: ObjectPool,
 }
 
 #[derive(Debug, Error)]
@@ -55,8 +55,16 @@ impl VirtualMachine {
                     self.stack_push(constant.clone());
                 }
                 OpCode::Neg => {
-                    let v = self.stack_top();
+                    let v = self.stack_top_mut();
                     *v = (-v.clone()).map_err(invalid_operand_err)?;
+                }
+                OpCode::Add
+                    if let (Value::Object(o1), Value::Object(o2)) =
+                        (self.stack_peek(0), self.stack_peek(1))
+                        && o1.kind() == ObjKind::String
+                        && o2.kind() == ObjKind::String =>
+                {
+                    self.concatenate_str()
                 }
                 OpCode::Add => self.binary_op(Value::add).map_err(invalid_operand_err)?,
                 OpCode::Sub => self.binary_op(Value::sub).map_err(invalid_operand_err)?,
@@ -72,7 +80,7 @@ impl VirtualMachine {
                     self.stack_push(Value::nil());
                 }
                 OpCode::Not => {
-                    let v = self.stack_top();
+                    let v = self.stack_top_mut();
                     *v = Value::Boolean(v.is_falsey());
                 }
                 OpCode::Equal => {
@@ -89,6 +97,10 @@ impl VirtualMachine {
         Ok(())
     }
 
+    pub fn heap(&mut self) -> &mut ObjectPool {
+        &mut self.heap
+    }
+
     fn binary_op<F>(&mut self, op: F) -> Result<(), ValueError>
     where
         F: Fn(Value, Value) -> Result<Value, ValueError>,
@@ -98,6 +110,20 @@ impl VirtualMachine {
         let res = op(a, b)?;
         self.stack_push(res);
         Ok(())
+    }
+
+    fn concatenate_str(&mut self) {
+        let (Value::Object(b), Value::Object(a)) = (self.stack_pop(), self.stack_pop()) else {
+            unreachable!("just matched Object in branch");
+        };
+        // SAFETY: we only call this function on the string objects branch
+        let a = unsafe { a.downcast_ref::<StringObj>() };
+        let b = unsafe { b.downcast_ref::<StringObj>() };
+        // PERF: create constructor that adds in place, reduces one allocation
+        let mut s = a.as_str().to_owned();
+        s.push_str(b);
+        let obj = self.heap.add(StringObj::boxed(&s));
+        self.stack_push(Value::Object(obj));
     }
 
     fn stack_push(&mut self, value: Value) {
@@ -110,7 +136,16 @@ impl VirtualMachine {
             .expect("compiler bug, nothing to pop on the VM stack")
     }
 
-    fn stack_top(&mut self) -> &mut Value {
+    #[expect(dead_code)]
+    fn stack_top(&self) -> &Value {
+        // optimization for ops that pop 1 value and push 1 value
+        // allows mutation in place
+        self.stack
+            .last()
+            .expect("compiler bug, nothing on top of the VM stack")
+    }
+
+    fn stack_top_mut(&mut self) -> &mut Value {
         // optimization for ops that pop 1 value and push 1 value
         // allows mutation in place
         self.stack
@@ -118,12 +153,19 @@ impl VirtualMachine {
             .expect("compiler bug, nothing on top of the VM stack")
     }
 
-    #[expect(dead_code)]
-    fn stack_peek(&mut self, distance: usize) -> &mut Value {
+    fn stack_peek(&self, distance: usize) -> &Value {
         let len = self.stack.len();
         self.stack
-            .get_mut(len - distance)
-            .expect("compiler bug, nothing on top of the VM stack")
+            .get(len - distance - 1)
+            .expect("compiler bug, nothing to peek on the VM stack")
+    }
+
+    #[expect(dead_code)]
+    fn stack_peek_mut(&mut self, distance: usize) -> &mut Value {
+        let len = self.stack.len();
+        self.stack
+            .get_mut(len - distance - 1)
+            .expect("compiler bug, nothing to peek on the VM stack")
     }
 
     #[expect(dead_code)]

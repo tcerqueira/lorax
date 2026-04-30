@@ -32,6 +32,10 @@ impl Value {
         Self::Number(value)
     }
 
+    pub fn object(value: UnsafeRef<Object>) -> Self {
+        Self::Object(value)
+    }
+
     pub fn is_falsey(&self) -> bool {
         !match self {
             Self::Boolean(b) => *b,
@@ -117,6 +121,7 @@ impl PartialEq for Value {
             (Self::Nil, Self::Nil) => true,
             (Self::Boolean(a), Self::Boolean(b)) => a == b,
             (Self::Number(a), Self::Number(b)) => a == b,
+            (Self::Object(a), Self::Object(b)) => a.as_ref() == b.as_ref(),
             _ => unreachable!("missing impl for PartialEq"),
         }
     }
@@ -142,7 +147,7 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(n) => write!(f, "{n}"),
-            Value::Object(_obj) => todo!(),
+            Value::Object(obj) => write!(f, "\"{}\"", obj.as_ref()),
         }
     }
 }

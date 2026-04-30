@@ -17,7 +17,7 @@ pub struct StringObj {
 }
 
 impl StringObj {
-    pub fn new(s: &str) -> Box<Self> {
+    pub fn boxed(s: &str) -> Box<Self> {
         let bytes = s.as_bytes();
         let layout = Self::layout(bytes.len());
 
@@ -77,6 +77,12 @@ unsafe impl ObjectKind for StringObj {
     }
 }
 
+impl PartialEq for StringObj {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
 impl Deref for StringObj {
     type Target = str;
 
@@ -114,14 +120,14 @@ mod tests {
 
     #[test]
     fn new_preserves_ascii() {
-        let s = StringObj::new("hello");
+        let s = StringObj::boxed("hello");
         assert_eq!(&**s, "hello");
         assert_eq!(s.len, 5);
     }
 
     #[test]
     fn new_empty_string() {
-        let s = StringObj::new("");
+        let s = StringObj::boxed("");
         assert_eq!(&**s, "");
         assert_eq!(s.len, 0);
     }
@@ -129,14 +135,14 @@ mod tests {
     #[test]
     fn new_preserves_utf8() {
         let input = "héllo 世界 🦀";
-        let s = StringObj::new(input);
+        let s = StringObj::boxed(input);
         assert_eq!(&**s, input);
         assert_eq!(s.len, input.len());
     }
 
     #[test]
     fn as_ref_bytes_matches() {
-        let s = StringObj::new("abc");
+        let s = StringObj::boxed("abc");
         let bytes = s.as_bytes();
         assert_eq!(bytes, b"abc");
     }
@@ -145,12 +151,12 @@ mod tests {
     fn box_drops_cleanly() {
         // Smoke test: dropping Box<StringObj> uses fat-pointer Layout::for_value
         // to dealloc the full alloc. Miri verifies no leak/UB.
-        let _ = StringObj::new("dropped via Box");
+        let _ = StringObj::boxed("dropped via Box");
     }
 
     #[test]
     fn upcast_downcast_roundtrip() {
-        let owned: OwnedObject = StringObj::new("roundtrip").upcast();
+        let owned: OwnedObject = StringObj::boxed("roundtrip").upcast();
         let obj_ref = owned.into_ref();
         // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
         // dynamic kind is `StringObj`.

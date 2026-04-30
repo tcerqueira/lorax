@@ -47,8 +47,8 @@ pub struct Object {
 
 intrusive_adapter!(ObjectAdapter = UnsafeRef<Object>: Object { link => SinglyLinkedListLink });
 
-#[derive(Debug)]
-enum ObjKind {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjKind {
     String,
 }
 
@@ -97,6 +97,23 @@ impl Object {
         // `*mut T` to the same allocation. We're transferring ownership of the
         // raw pointer to the new `UnsafeRef<T>`.
         unsafe { UnsafeRef::from_raw(T::from_object_raw(raw)) }
+    }
+
+    pub fn kind(&self) -> ObjKind {
+        self.kind
+    }
+}
+
+impl PartialEq for Object {
+    fn eq(&self, other: &Self) -> bool {
+        if self.kind != other.kind {
+            return false;
+        }
+        match self.kind {
+            ObjKind::String => unsafe {
+                self.downcast_ref::<StringObj>() == other.downcast_ref::<StringObj>()
+            },
+        }
     }
 }
 
@@ -196,13 +213,13 @@ mod tests {
     fn drop_frees_string_alloc() {
         // Smoke test: OwnedObject::drop dispatches and frees the full alloc.
         // Miri catches leaks/UB.
-        let owned = StringObj::new("dropped via OwnedObject").upcast();
+        let owned = StringObj::boxed("dropped via OwnedObject").upcast();
         drop(owned);
     }
 
     #[test]
     fn deref_exposes_kind() {
-        let owned = StringObj::new("k").upcast();
+        let owned = StringObj::boxed("k").upcast();
         match &owned.kind {
             ObjKind::String => {}
         }
@@ -210,14 +227,14 @@ mod tests {
 
     #[test]
     fn as_ref_returns_object() {
-        let owned = StringObj::new("a").upcast();
+        let owned = StringObj::boxed("a").upcast();
         let _: &Object = owned.as_ref();
     }
 
     #[test]
     fn into_ref_then_owned_roundtrip() {
         // into_ref → reconstruct OwnedObject → drop. No double-free.
-        let owned = StringObj::new("via ref").upcast();
+        let owned = StringObj::boxed("via ref").upcast();
         let obj_ref = owned.into_ref();
         let raw = UnsafeRef::into_raw(obj_ref);
         // SAFETY: `raw` originated from `OwnedObject::into_raw` (via
