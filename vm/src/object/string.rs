@@ -1,10 +1,13 @@
 use std::{
-    alloc::{self, Layout},
+    alloc::Layout,
     fmt::Display,
     mem,
     ops::Deref,
-    ptr,
+    ptr::{self, NonNull},
 };
+
+use erasable::{Erasable, ErasedPtr};
+use slice_dst::{AllocSliceDst, SliceDst};
 
 use crate::object::{Object, ObjectKind};
 
@@ -19,32 +22,21 @@ pub struct StringObj {
 impl StringObj {
     pub fn boxed(s: &str) -> Box<Self> {
         let bytes = s.as_bytes();
-        let layout = Self::layout(bytes.len());
-
-        // SAFETY: `alloc::alloc(layout)` returns either null (handled) or an
-        // uninitialized allocation of the requested layout. The fat pointer is
-        // built with the correct slice length, so field offsets match the
-        // layout. Each field is initialized exactly once via `ptr::write`
-        // (skipping `Drop` of uninitialized data); `copy_nonoverlapping` fills
-        // `buf` from a non-overlapping source. After full initialization,
-        // `Box::from_raw` takes ownership; on drop, `Box` deallocates using
-        // `Layout::for_value` on the fat pointer, which matches `Self::layout`.
+        // SAFETY: `Box::new_slice_dst` allocates with `Self::layout_for(len)`
+        // and hands us a fully-uninitialized pointer. The initializer writes
+        // every field exactly once via `ptr::write` (skipping `Drop` of
+        // uninitialized data) and fills `buf` from a non-overlapping source.
         unsafe {
-            let raw = alloc::alloc(layout);
-            if raw.is_null() {
-                alloc::handle_alloc_error(layout);
-            }
-            let fat: *mut StringObj = ptr::from_raw_parts_mut(raw.cast::<()>(), bytes.len());
-
-            ptr::write(&raw mut (*fat).obj, Object::string());
-            ptr::write(&raw mut (*fat).len, bytes.len());
-            ptr::copy_nonoverlapping(
-                bytes.as_ptr(),
-                (&raw mut (*fat).buf).cast::<u8>(),
-                bytes.len(),
-            );
-
-            Box::from_raw(fat)
+            <Box<Self> as AllocSliceDst<Self>>::new_slice_dst(bytes.len(), |ptr| {
+                let p = ptr.as_ptr();
+                ptr::write(&raw mut (*p).obj, Object::string());
+                ptr::write(&raw mut (*p).len, bytes.len());
+                ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    (&raw mut (*p).buf).cast::<u8>(),
+                    bytes.len(),
+                );
+            })
         }
     }
 
@@ -55,26 +47,49 @@ impl StringObj {
     pub fn as_bytes(&self) -> &[u8] {
         Self::as_ref(self)
     }
+}
 
-    fn layout(len: usize) -> Layout {
+// SAFETY: `StringObj` is `#[repr(C)]` with `Object` (`obj`) as its first
+// field, so an `Object` header at offset 0 is layout-compatible. Construction
+// goes through `Self::boxed`, which sets `obj.kind = ObjKind::String`.
+unsafe impl ObjectKind for StringObj {}
+
+// SAFETY: `layout_for(len)` produces the exact layout written by `boxed`'s
+// initializer, and `retype` is a pure pointer cast as required.
+unsafe impl SliceDst for StringObj {
+    fn layout_for(len: usize) -> Layout {
         let (l, _) = Layout::new::<Object>()
             .extend(Layout::new::<usize>())
             .unwrap();
         let (l, _) = l.extend(Layout::array::<u8>(len).unwrap()).unwrap();
         l.pad_to_align()
     }
+
+    fn retype(ptr: NonNull<[()]>) -> NonNull<Self> {
+        NonNull::from_raw_parts(ptr.cast::<()>(), ptr.len())
+    }
 }
 
-// SAFETY: `StringObj` is `#[repr(C)]` with `Object` (`obj`) as its first
-// field, so an `Object` header at offset 0 is layout-compatible.
-unsafe impl ObjectKind for StringObj {
-    unsafe fn from_object_raw(obj: *mut Object) -> *mut Self {
-        // SAFETY: caller's contract guarantees `obj` points to a `StringObj`.
-        // `#[repr(C)]` makes `mem::offset_of!(StringObj, len)` a valid byte
-        // offset to a properly-aligned `usize`, so `ptr::read` is sound.
-        let len = unsafe { ptr::read(obj.byte_add(mem::offset_of!(StringObj, len)).cast()) };
-        ptr::from_raw_parts_mut(obj.cast::<()>(), len)
+// SAFETY: the inline `len` field at `offset_of!(StringObj, len)` always equals
+// the slice length used to allocate the value (set in `boxed`), so reading it
+// rebuilds the correct fat pointer. The read is a raw pointer read, no
+// reference is materialized.
+unsafe impl Erasable for StringObj {
+    unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
+        let raw = this.as_ptr();
+        // SAFETY: `raw` came from `erase` on a `NonNull<StringObj>`; the `len`
+        // field lives at a fixed `#[repr(C)]` offset and is initialized.
+        let len = unsafe {
+            ptr::read(
+                raw.byte_add(mem::offset_of!(Self, len))
+                    .cast::<usize>()
+                    .cast_const(),
+            )
+        };
+        NonNull::from_raw_parts(this.cast::<()>(), len)
     }
+
+    const ACK_1_1_0: bool = true;
 }
 
 impl PartialEq for StringObj {
@@ -87,7 +102,7 @@ impl Deref for StringObj {
     type Target = str;
 
     fn deref(&self) -> &str {
-        // SAFETY: `buf` is only ever populated from `&str` bytes in `new`, so
+        // SAFETY: `buf` is only ever populated from `&str` bytes in `boxed`, so
         // its contents are guaranteed to be valid UTF-8.
         unsafe { std::str::from_utf8_unchecked(&self.buf) }
     }
@@ -164,8 +179,8 @@ mod tests {
         assert_eq!(&**downcast, "roundtrip");
 
         let raw = UnsafeRef::into_raw(downcast);
-        // SAFETY: `raw` traces back to `Box::into_raw(StringObj::new(...))` via
-        // the upcast/downcast roundtrip, so `Box::from_raw` is the matching
+        // SAFETY: `raw` traces back to `Box::into_raw(StringObj::boxed(...))`
+        // via the upcast/downcast roundtrip, so `Box::from_raw` is the matching
         // ownership transfer.
         drop(unsafe { Box::from_raw(raw) });
     }

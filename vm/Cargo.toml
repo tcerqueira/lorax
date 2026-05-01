@@ -9,3 +9,5 @@ lexer = { path = "../lexer" }
 thiserror = "2"
 anyhow = "1"
 intrusive-collections = "0.10"
+slice-dst = "1.5"
+erasable = "1.3"

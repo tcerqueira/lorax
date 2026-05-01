@@ -5,6 +5,7 @@ use std::{
     ptr::NonNull,
 };
 
+use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
 use crate::object::string::StringObj;
@@ -12,20 +13,15 @@ use crate::object::string::StringObj;
 pub mod pool;
 pub mod string;
 
-/// A concrete object kind embedded behind an [`Object`] header.
+/// A concrete object kind that can be stored behind an [`Object`] header.
 ///
 /// # Safety
 ///
-/// Implementor must be `#[repr(C)]` with [`Object`] as the first field,
-/// no padding before it.
-pub unsafe trait ObjectKind {
-    /// Recover `*mut Self` from `*mut Object`.
-    ///
-    /// # Safety
-    ///
-    /// `obj` must point to an [`Object`] of dynamic kind `Self`.
-    unsafe fn from_object_raw(obj: *mut Object) -> *mut Self;
-
+/// Implementor must be `#[repr(C)]` with [`Object`] as the first field, no
+/// padding before it, and its embedded `Object`'s `kind` must accurately
+/// describe the dynamic layout (set during construction). Implementor must
+/// also implement [`Erasable`] so a thin pointer can be reconstituted.
+pub unsafe trait ObjectKind: Erasable {
     /// Take ownership of a `Box<Self>` as an [`OwnedObject`].
     fn upcast(self: Box<Self>) -> OwnedObject {
         let raw = Box::into_raw(self);
@@ -66,11 +62,10 @@ impl Object {
     ///
     /// The Object's dynamic kind must be `T`.
     pub unsafe fn downcast_ref<T: ObjectKind + ?Sized>(&self) -> &T {
-        // SAFETY: caller upholds the kind invariant, so `from_object_raw`
-        // returns a valid `*mut T` to the same allocation. The `*mut` cast is
-        // inert — we only produce a shared `&T`, whose lifetime is tied to
-        // `&self`.
-        unsafe { &*T::from_object_raw(self as *const Self as *mut Self) }
+        // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
+        // valid `NonNull<T>` to the same allocation. We only produce a shared
+        // `&T` whose lifetime is tied to `&self`.
+        unsafe { T::unerase(erase(NonNull::from(self))).as_ref() }
     }
 
     /// Downcast a unique reference to a concrete kind.
@@ -79,10 +74,10 @@ impl Object {
     ///
     /// The Object's dynamic kind must be `T`.
     pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(&mut self) -> &mut T {
-        // SAFETY: caller upholds the kind invariant, so `from_object_raw`
-        // returns a valid `*mut T`. The `&mut self` borrow guarantees the
-        // resulting `&mut T` is unique and valid for `&mut self`'s lifetime.
-        unsafe { &mut *T::from_object_raw(self) }
+        // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
+        // valid `NonNull<T>`. The `&mut self` borrow guarantees the resulting
+        // `&mut T` is unique and valid for `&mut self`'s lifetime.
+        unsafe { T::unerase(erase(NonNull::from(self))).as_mut() }
     }
 
     /// Downcast an unsafe reference to a concrete kind.
@@ -93,10 +88,13 @@ impl Object {
     pub unsafe fn downcast<T: ObjectKind + ?Sized>(self: UnsafeRef<Self>) -> UnsafeRef<T> {
         let raw = UnsafeRef::into_raw(self);
         // SAFETY: `UnsafeRef::into_raw` returned a valid pointer; caller
-        // upholds the kind invariant, so `from_object_raw(raw)` is a valid
-        // `*mut T` to the same allocation. We're transferring ownership of the
-        // raw pointer to the new `UnsafeRef<T>`.
-        unsafe { UnsafeRef::from_raw(T::from_object_raw(raw)) }
+        // upholds the kind invariant, so `T::unerase` is a valid `NonNull<T>`
+        // to the same allocation. We're transferring ownership of the raw
+        // pointer to the new `UnsafeRef<T>`.
+        unsafe {
+            let erased = erase(NonNull::new_unchecked(raw));
+            UnsafeRef::from_raw(T::unerase(erased).as_ptr())
+        }
     }
 
     pub fn kind(&self) -> ObjKind {
@@ -122,7 +120,7 @@ impl Display for Object {
         match self.kind {
             // SAFETY: `kind == ObjKind::String` is the type-system witness that
             // the dynamic kind is `StringObj` — set at construction by
-            // `Object::string()` inside `StringObj::new`.
+            // `Object::string()` inside `StringObj::boxed`.
             ObjKind::String => {
                 <StringObj as Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
             }
@@ -139,7 +137,7 @@ impl OwnedObject {
     /// # Safety
     ///
     /// `ptr` must be a unique owning pointer to a heap object whose actual
-    /// layout matches its `kind` (i.e. produced via `ObjectCast::upcast`).
+    /// layout matches its `kind` (i.e. produced via `ObjectKind::upcast`).
     pub unsafe fn from_raw(ptr: *mut Object) -> Self {
         // SAFETY: caller's contract requires `ptr` to be a valid (non-null)
         // owning pointer.
@@ -176,31 +174,20 @@ impl AsRef<Object> for OwnedObject {
     }
 }
 
-// impl ObjectPtr for OwnedObject {
-//     type Of<T: ObjectKind + ?Sized> = Box<T>;
-
-//     fn into_raw(self) -> *mut Object {
-//         OwnedObject::into_raw(self)
-//     }
-
-//     unsafe fn from_concrete<T: ObjectKind + ?Sized>(ptr: *mut T) -> Box<T> {
-//         unsafe { Box::from_raw(ptr) }
-//     }
-// }
-
 impl Drop for OwnedObject {
     fn drop(&mut self) {
-        let raw = self.0.as_ptr();
-        match &self.kind {
-            // SAFETY: `OwnedObject`'s invariant guarantees `raw` is the unique
-            // owning pointer to a heap object whose layout matches `kind`.
-            // Matching `ObjKind::String` confirms the dynamic kind is
-            // `StringObj`, so `from_object_raw` reconstructs the correct fat
-            // pointer. The original allocation came from `Box::from_raw` in
-            // `StringObj::new`, so re-boxing here uses the matching dealloc
-            // path (`Box`'s drop will call `Layout::for_value` on the fat
-            // pointer, matching the `StringObj::layout(len)` we allocated with).
-            ObjKind::String => drop(unsafe { Box::from_raw(StringObj::from_object_raw(raw)) }),
+        let erased: ErasedPtr = erase(self.0);
+        match self.kind {
+            // SAFETY: `OwnedObject`'s invariant guarantees `erased` is the
+            // unique owning thin pointer to a heap object whose layout matches
+            // `kind`. Matching `ObjKind::String` confirms the dynamic kind is
+            // `StringObj`, so `unerase` reconstructs the correct fat pointer.
+            // The original allocation came from `Box::new_slice_dst` in
+            // `StringObj::boxed`, so re-boxing here uses the matching dealloc
+            // path.
+            ObjKind::String => drop(unsafe {
+                Box::from_raw(StringObj::unerase(erased).as_ptr())
+            }),
         }
     }
 }
