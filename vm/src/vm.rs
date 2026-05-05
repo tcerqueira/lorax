@@ -1,5 +1,6 @@
 use std::{
     io::{Cursor, Seek},
+    mem,
     ops::{Add, Div, Mul, Sub},
 };
 
@@ -10,15 +11,16 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::{DecodeError, OpDecoder},
-    object::{ObjKind, pool::ObjectPool, string::StringObj},
+    object::{ObjKind, internal_str::InternalStr, string::StringObj},
     opcode::{OpCode, OpDecodeError},
+    storage::Storage,
     value::{Value, ValueError},
 };
 
 #[derive(Default)]
 pub struct VirtualMachine {
     stack: Vec<Value>,
-    heap: ObjectPool,
+    storage: Storage,
 }
 
 #[derive(Debug, Error)]
@@ -47,7 +49,13 @@ impl VirtualMachine {
                 OpCode::NoOp => {}
                 OpCode::Return => {
                     let v = self.stack_pop();
-                    println!("{v}");
+                    if let Value::Object(v) = &v
+                        && v.is_str()
+                    {
+                        println!("{}", v.as_str(&self.storage));
+                    } else {
+                        println!("{v}");
+                    }
                     return Ok(());
                 }
                 OpCode::Constant(addr) => {
@@ -61,8 +69,8 @@ impl VirtualMachine {
                 OpCode::Add
                     if let (Value::Object(o1), Value::Object(o2)) =
                         (self.stack_peek(0), self.stack_peek(1))
-                        && o1.kind() == ObjKind::String
-                        && o2.kind() == ObjKind::String =>
+                        && o1.is_str()
+                        && o2.is_str() =>
                 {
                     self.concatenate_str()
                 }
@@ -83,11 +91,7 @@ impl VirtualMachine {
                     let v = self.stack_top_mut();
                     *v = Value::Boolean(v.is_falsey());
                 }
-                OpCode::Equal => {
-                    let b = self.stack_pop();
-                    let a = self.stack_pop();
-                    self.stack_push(Value::boolean(a == b));
-                }
+                OpCode::Equal => self.equal(),
                 OpCode::Greater => self
                     .binary_op(Value::greater)
                     .map_err(invalid_operand_err)?,
@@ -97,8 +101,8 @@ impl VirtualMachine {
         Ok(())
     }
 
-    pub fn heap(&mut self) -> &mut ObjectPool {
-        &mut self.heap
+    pub fn storage(&mut self) -> &mut Storage {
+        &mut self.storage
     }
 
     fn binary_op<F>(&mut self, op: F) -> Result<(), ValueError>
@@ -112,17 +116,42 @@ impl VirtualMachine {
         Ok(())
     }
 
+    fn equal(&mut self) {
+        let b = self.stack_pop();
+        let a = self.stack_pop();
+        if mem::discriminant(&a) != mem::discriminant(&b) {
+            return self.stack_push(Value::boolean(false));
+        }
+
+        let res = match (&a, &b) {
+            (Value::Object(a), Value::Object(b)) => match (a.kind(), b.kind()) {
+                // Safety: checked kind before casting.
+                (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
+                    a.downcast_ref::<InternalStr>() == b.downcast_ref::<InternalStr>()
+                },
+                (s1, s2) if a.is_str() && b.is_str() => {
+                    let a = a.as_str(&self.storage);
+                    let b = b.as_str(&self.storage);
+                    a == b
+                }
+                _ => unreachable!("missing branch on equal"),
+            },
+            _ => a == b,
+        };
+        self.stack_push(Value::boolean(res));
+    }
+
     fn concatenate_str(&mut self) {
         let (Value::Object(b), Value::Object(a)) = (self.stack_pop(), self.stack_pop()) else {
             unreachable!("just matched Object in branch");
         };
         // SAFETY: we only call this function on the string objects branch
-        let a = unsafe { a.downcast_ref::<StringObj>() };
-        let b = unsafe { b.downcast_ref::<StringObj>() };
+        let a = a.as_str(&self.storage);
+        let b = b.as_str(&self.storage);
         // PERF: create constructor that adds in place, reduces one allocation
-        let mut s = a.as_str().to_owned();
+        let mut s = a.to_owned();
         s.push_str(b);
-        let obj = self.heap.add(StringObj::boxed(&s));
+        let obj = self.storage.heap.add(StringObj::boxed(&s));
         self.stack_push(Value::Object(obj));
     }
 

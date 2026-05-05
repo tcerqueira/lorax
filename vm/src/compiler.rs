@@ -8,13 +8,7 @@ use report::error::ParsingError;
 use report::{Span, error::LexingError};
 use thiserror::Error;
 
-use crate::{
-    chunk::Chunk,
-    object::{pool::ObjectPool, string::StringObj},
-    opcode::OpCode,
-    value::Value,
-    write_with_line,
-};
+use crate::{chunk::Chunk, opcode::OpCode, storage::Storage, value::Value, write_with_line};
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -84,15 +78,15 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
 pub struct Compiler<'s, 'h> {
     scanner: Peekable<Scanner<'s>>,
     chunk: Chunk,
-    heap: &'h mut ObjectPool,
+    storage: &'h mut Storage,
 }
 
 impl<'s, 'h> Compiler<'s, 'h> {
-    pub fn new(scanner: Scanner<'s>, heap: &'h mut ObjectPool) -> Self {
+    pub fn new(scanner: Scanner<'s>, storage: &'h mut Storage) -> Self {
         Self {
             scanner: scanner.peekable(),
             chunk: Chunk::default(),
-            heap,
+            storage,
         }
     }
 
@@ -199,7 +193,7 @@ impl<'s, 'h> Compiler<'s, 'h> {
         else {
             unreachable!("expected string token");
         };
-        let obj = self.heap.add(StringObj::boxed(&s));
+        let obj = self.storage.add_internal_str(&s);
         self.chunk
             .write_constant_with_line(span.line_start, Value::object(obj));
         Ok(())
@@ -280,13 +274,11 @@ impl<'s, 'h> Compiler<'s, 'h> {
 
 #[cfg(test)]
 mod tests {
-    use lexer::Scanner;
-
-    use crate::{chunk::Chunk, compiler::Compiler, object::pool::ObjectPool};
+    use super::*;
 
     fn compile(src: &str) -> Chunk {
-        let mut heap = ObjectPool::new();
-        Compiler::new(Scanner::new(src), &mut heap)
+        let mut storage = Storage::new();
+        Compiler::new(Scanner::new(src), &mut storage)
             .compile()
             .unwrap()
     }

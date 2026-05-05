@@ -25,6 +25,7 @@ pub(crate) mod debug;
 pub(crate) mod enconding;
 pub mod object;
 pub mod opcode;
+pub mod storage;
 pub mod value;
 pub mod vm;
 
@@ -57,7 +58,7 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let reporter = Reporter::new(&source);
     let scanner = Scanner::new(&source);
 
-    let mut compiler = Compiler::new(scanner, vm.heap());
+    let mut compiler = Compiler::new(scanner, vm.storage());
     let chunk = compiler.compile().inspect_err(|err| match err {
         CompileError::Lexing(e) => reporter.report(e),
         CompileError::Parsing(e) => reporter.report(e),

@@ -56,9 +56,7 @@ mod tests {
     fn returned_ref_kind_is_string() {
         let mut pool = ObjectPool::new();
         let obj_ref = pool.add(StringObj::boxed("ref"));
-        match &obj_ref.kind {
-            ObjKind::String => {}
-        }
+        assert!(obj_ref.kind() == ObjKind::String);
     }
 
     #[test]

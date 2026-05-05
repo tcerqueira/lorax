@@ -8,8 +8,12 @@ use std::{
 use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
-use crate::object::string::StringObj;
+use crate::{
+    object::{internal_str::InternalStr, string::StringObj},
+    storage::Storage,
+};
 
+pub mod internal_str;
 pub mod pool;
 pub mod string;
 
@@ -46,12 +50,20 @@ intrusive_adapter!(ObjectAdapter = UnsafeRef<Object>: Object { link => SinglyLin
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjKind {
     String,
+    InternalStr,
 }
 
 impl Object {
     pub fn string() -> Self {
         Self {
             kind: ObjKind::String,
+            link: SinglyLinkedListLink::new(),
+        }
+    }
+
+    pub fn internal_str() -> Self {
+        Self {
+            kind: ObjKind::InternalStr,
             link: SinglyLinkedListLink::new(),
         }
     }
@@ -100,17 +112,37 @@ impl Object {
     pub fn kind(&self) -> ObjKind {
         self.kind
     }
+
+    pub fn is_str(&self) -> bool {
+        self.kind == ObjKind::String || self.kind == ObjKind::InternalStr
+    }
+
+    pub fn as_str<'a>(&'a self, storage: &'a Storage) -> &'a str {
+        match self.kind() {
+            ObjKind::String => unsafe { self.downcast_ref::<StringObj>().as_str() },
+            ObjKind::InternalStr => unsafe {
+                self.downcast_ref::<InternalStr>().as_str(&storage.strings)
+            },
+            #[expect(unreachable_patterns)]
+            _ => panic!("Object is not a string"),
+        }
+    }
 }
 
 impl PartialEq for Object {
     fn eq(&self, other: &Self) -> bool {
-        if self.kind != other.kind {
-            return false;
-        }
-        match self.kind {
-            ObjKind::String => unsafe {
+        match (self.kind(), other.kind()) {
+            (ObjKind::String, ObjKind::String) => unsafe {
                 self.downcast_ref::<StringObj>() == other.downcast_ref::<StringObj>()
             },
+            (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
+                self.downcast_ref::<InternalStr>() == other.downcast_ref::<InternalStr>()
+            },
+            _ => panic!(
+                "cant compare {:?} and {:?} with just the object",
+                self.kind(),
+                other.kind()
+            ),
         }
     }
 }
@@ -123,6 +155,9 @@ impl Display for Object {
             // `Object::string()` inside `StringObj::boxed`.
             ObjKind::String => {
                 <StringObj as Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
+            }
+            ObjKind::InternalStr => {
+                <InternalStr as Display>::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f)
             }
         }
     }
@@ -185,9 +220,10 @@ impl Drop for OwnedObject {
             // The original allocation came from `Box::new_slice_dst` in
             // `StringObj::boxed`, so re-boxing here uses the matching dealloc
             // path.
-            ObjKind::String => drop(unsafe {
-                Box::from_raw(StringObj::unerase(erased).as_ptr())
-            }),
+            ObjKind::String => drop(unsafe { Box::from_raw(StringObj::unerase(erased).as_ptr()) }),
+            ObjKind::InternalStr => {
+                drop(unsafe { Box::from_raw(InternalStr::unerase(erased).as_ptr()) })
+            }
         }
     }
 }
@@ -207,9 +243,7 @@ mod tests {
     #[test]
     fn deref_exposes_kind() {
         let owned = StringObj::boxed("k").upcast();
-        match &owned.kind {
-            ObjKind::String => {}
-        }
+        assert_eq!(owned.kind(), ObjKind::String);
     }
 
     #[test]
