@@ -5,6 +5,7 @@ use lasso::{Rodeo, Spur};
 use crate::object::{Object, ObjectKind};
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct InternalStr {
     _obj: Object,
     key: Spur,

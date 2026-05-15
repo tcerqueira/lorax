@@ -23,3 +23,18 @@ impl Storage {
         self.heap.add(internal_str)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::object::{ObjKind, string::StringObj};
+
+    #[test]
+    fn add_obj_routes_through_pool() {
+        let mut storage = Storage::new();
+        let obj_ref = storage.add_obj(StringObj::boxed("via add_obj"));
+        assert_eq!(obj_ref.kind(), ObjKind::String);
+        // Pool owns the alloc; release our handle without freeing.
+        let _ = UnsafeRef::into_raw(obj_ref);
+    }
+}

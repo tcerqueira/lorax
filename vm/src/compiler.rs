@@ -307,4 +307,19 @@ mod tests {
     fn logical() {
         let _program = compile("!(5 - 4 > 3 * 2 == !nil)");
     }
+
+    #[test]
+    fn string_literal() {
+        let _program = compile("\"hello\"");
+    }
+
+    #[test]
+    fn string_concat() {
+        let _program = compile("\"a\" + \"b\"");
+    }
+
+    #[test]
+    fn string_equality() {
+        let _program = compile("\"a\" == \"a\"");
+    }
 }

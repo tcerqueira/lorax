@@ -227,7 +227,14 @@ impl Drop for OwnedObject {
 
 #[cfg(test)]
 mod tests {
+    use lasso::Rodeo;
+
     use super::*;
+
+    fn boxed_internal_str(s: &str) -> OwnedObject {
+        let mut rodeo = Rodeo::new();
+        Box::new(InternalStr::new(&mut rodeo, s)).upcast()
+    }
 
     #[test]
     fn drop_frees_string_alloc() {
@@ -235,6 +242,12 @@ mod tests {
         // Miri catches leaks/UB.
         let owned = StringObj::boxed("dropped via OwnedObject").upcast();
         drop(owned);
+    }
+
+    #[test]
+    fn drop_frees_internal_str_alloc() {
+        // Smoke test for the `InternalStr` Drop branch.
+        drop(boxed_internal_str("drop me"));
     }
 
     #[test]
@@ -255,5 +268,41 @@ mod tests {
         let mut storage = Storage::new();
         let obj_ref = storage.add_internal_str("interned");
         assert_eq!(obj_ref.as_str(&storage), "interned");
+    }
+
+    #[test]
+    fn as_str_for_string_kind() {
+        // Exercises the `StringObj` arm (including the `&str` lifetime
+        // launder). Pool owns the alloc; storage Drop reclaims it.
+        let mut storage = Storage::new();
+        let obj_ref = storage.add_obj(StringObj::boxed("plain"));
+        assert_eq!(obj_ref.as_str(&storage), "plain");
+    }
+
+    #[test]
+    fn equal_internal_strings_compare_equal_via_object() {
+        let mut storage = Storage::new();
+        let a = storage.add_internal_str("eq");
+        let b = storage.add_internal_str("eq");
+        assert!(a.eq(&b));
+    }
+
+    #[test]
+    fn distinct_internal_strings_not_equal_via_object() {
+        let mut storage = Storage::new();
+        let a = storage.add_internal_str("a");
+        let b = storage.add_internal_str("b");
+        assert!(!a.eq(&b));
+    }
+
+    #[test]
+    #[should_panic(expected = "cant compare")]
+    fn cross_kind_string_eq_panics() {
+        // `Object::eq` deliberately panics for mixed string kinds — callers
+        // must route through `as_str` (the VM does this in `equal`).
+        let mut storage = Storage::new();
+        let s = storage.add_obj(StringObj::boxed("x"));
+        let i = storage.add_internal_str("x");
+        let _ = s.eq(&i);
     }
 }
