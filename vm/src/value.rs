@@ -121,7 +121,7 @@ impl PartialEq for Value {
             (Self::Nil, Self::Nil) => true,
             (Self::Boolean(a), Self::Boolean(b)) => a == b,
             (Self::Number(a), Self::Number(b)) => a == b,
-            (Self::Object(a), Self::Object(b)) => a.as_ref() == b.as_ref(),
+            (Self::Object(a), Self::Object(b)) => a.eq(b),
             _ => unreachable!("missing impl for PartialEq"),
         }
     }
@@ -147,7 +147,7 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(n) => write!(f, "{n}"),
-            Value::Object(obj) => write!(f, "\"{}\"", obj.as_ref()),
+            Value::Object(obj) => obj.display_fmt(f),
         }
     }
 }

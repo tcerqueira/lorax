@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Debug, Formatter},
     mem,
     ops::Deref,
     ptr::NonNull,
@@ -73,11 +73,12 @@ impl Object {
     /// # Safety
     ///
     /// The Object's dynamic kind must be `T`.
-    pub unsafe fn downcast_ref<T: ObjectKind + ?Sized>(&self) -> &T {
-        // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
-        // valid `NonNull<T>` to the same allocation. We only produce a shared
-        // `&T` whose lifetime is tied to `&self`.
-        unsafe { T::unerase(erase(NonNull::from(self))).as_ref() }
+    pub unsafe fn downcast_ref<T: ObjectKind + ?Sized>(self: &UnsafeRef<Self>) -> &T {
+        // SAFETY: caller upholds the kind invariant. `UnsafeRef::as_ptr` yields
+        // the original heap pointer with its full provenance (set at the alloc
+        // site), so `unerase`'s NonNull is a valid `NonNull<T>` to the heap object.
+        let ptr = unsafe { NonNull::new_unchecked(UnsafeRef::into_raw(self.clone())) };
+        unsafe { T::unerase(erase(ptr)).as_ref() }
     }
 
     /// Downcast a unique reference to a concrete kind.
@@ -85,11 +86,12 @@ impl Object {
     /// # Safety
     ///
     /// The Object's dynamic kind must be `T`.
-    pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(&mut self) -> &mut T {
+    pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(self: &mut UnsafeRef<Self>) -> &mut T {
         // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
         // valid `NonNull<T>`. The `&mut self` borrow guarantees the resulting
         // `&mut T` is unique and valid for `&mut self`'s lifetime.
-        unsafe { T::unerase(erase(NonNull::from(self))).as_mut() }
+        let ptr = unsafe { NonNull::new_unchecked(UnsafeRef::into_raw(self.clone())) };
+        unsafe { T::unerase(erase(ptr)).as_mut() }
     }
 
     /// Downcast an unsafe reference to a concrete kind.
@@ -117,21 +119,27 @@ impl Object {
         self.kind == ObjKind::String || self.kind == ObjKind::InternalStr
     }
 
-    pub fn as_str<'a>(&'a self, storage: &'a Storage) -> &'a str {
+    pub fn as_str<'s>(self: &UnsafeRef<Self>, storage: &'s Storage) -> &'s str {
         match self.kind() {
-            ObjKind::String => unsafe { self.downcast_ref::<StringObj>().as_str() },
+            ObjKind::String => unsafe {
+                // SAFETY: the alloc is owned by `storage.heap` (an ObjectPool),
+                // which is borrowed shared via `&'s Storage`, so it cannot be
+                // dropped or mutated for the duration of `'s`. The buffer sits
+                // inline in that alloc, so the `&str` is valid for `'s`.
+                let s: &str = self.downcast_ref::<StringObj>().as_str();
+                mem::transmute::<&str, &'s str>(s)
+            },
             ObjKind::InternalStr => unsafe {
                 self.downcast_ref::<InternalStr>().as_str(&storage.strings)
             },
-            #[expect(unreachable_patterns)]
-            _ => panic!("Object is not a string"),
         }
     }
 }
 
-impl PartialEq for Object {
-    fn eq(&self, other: &Self) -> bool {
+impl Object {
+    pub fn eq(self: &UnsafeRef<Self>, other: &UnsafeRef<Self>) -> bool {
         match (self.kind(), other.kind()) {
+            // SAFETY: matched kind witnesses the dynamic type on each side.
             (ObjKind::String, ObjKind::String) => unsafe {
                 self.downcast_ref::<StringObj>() == other.downcast_ref::<StringObj>()
             },
@@ -145,19 +153,15 @@ impl PartialEq for Object {
             ),
         }
     }
-}
 
-impl Display for Object {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.kind {
-            // SAFETY: `kind == ObjKind::String` is the type-system witness that
-            // the dynamic kind is `StringObj` — set at construction by
-            // `Object::string()` inside `StringObj::boxed`.
+    pub fn display_fmt(self: &UnsafeRef<Self>, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            // SAFETY: matched kind witnesses the dynamic type.
             ObjKind::String => {
-                <StringObj as Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
+                <StringObj as fmt::Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
             }
             ObjKind::InternalStr => {
-                <InternalStr as Display>::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f)
+                <InternalStr as fmt::Display>::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f)
             }
         }
     }
@@ -183,13 +187,6 @@ impl OwnedObject {
         let ptr = self.0.as_ptr();
         mem::forget(self);
         ptr
-    }
-
-    pub fn into_ref(self) -> UnsafeRef<Object> {
-        // SAFETY: `into_raw` yields a non-null pointer to a valid `Object`,
-        // and ownership is transferred from this `OwnedObject` to the new
-        // `UnsafeRef`.
-        unsafe { UnsafeRef::from_raw(self.into_raw()) }
     }
 }
 
@@ -249,18 +246,14 @@ mod tests {
     #[test]
     fn as_ref_returns_object() {
         let owned = StringObj::boxed("a").upcast();
-        let _: &Object = owned.as_ref();
+        let obj: &Object = owned.as_ref();
+        assert!(obj.is_str());
     }
 
     #[test]
-    fn into_ref_then_owned_roundtrip() {
-        // into_ref → reconstruct OwnedObject → drop. No double-free.
-        let owned = StringObj::boxed("via ref").upcast();
-        let obj_ref = owned.into_ref();
-        let raw = UnsafeRef::into_raw(obj_ref);
-        // SAFETY: `raw` originated from `OwnedObject::into_raw` (via
-        // `into_ref` → `UnsafeRef::into_raw`), so it's still the unique
-        // owning pointer.
-        drop(unsafe { OwnedObject::from_raw(raw) });
+    fn as_str_for_internal_str_kind() {
+        let mut storage = Storage::new();
+        let obj_ref = storage.add_internal_str("interned");
+        assert_eq!(obj_ref.as_str(&storage), "interned");
     }
 }

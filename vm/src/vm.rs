@@ -49,13 +49,10 @@ impl VirtualMachine {
                 OpCode::NoOp => {}
                 OpCode::Return => {
                     let v = self.stack_pop();
-                    if let Value::Object(v) = &v
-                        && v.is_str()
-                    {
-                        println!("{}", v.as_str(&self.storage));
-                    } else {
-                        println!("{v}");
-                    }
+                    match v {
+                        Value::Object(v) if v.is_str() => println!("{}", v.as_str(&self.storage)),
+                        v => println!("{v}"),
+                    };
                     return Ok(());
                 }
                 OpCode::Constant(addr) => {
@@ -123,7 +120,7 @@ impl VirtualMachine {
             return self.stack_push(Value::boolean(false));
         }
 
-        let res = match (&a, &b) {
+        let res = match (a, b) {
             (Value::Object(a), Value::Object(b)) => match (a.kind(), b.kind()) {
                 // Safety: checked kind before casting.
                 (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
@@ -136,7 +133,7 @@ impl VirtualMachine {
                 }
                 _ => unreachable!("missing branch on equal"),
             },
-            _ => a == b,
+            (a, b) => a == b,
         };
         self.stack_push(Value::boolean(res));
     }

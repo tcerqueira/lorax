@@ -11,7 +11,13 @@ impl ObjectPool {
     }
 
     pub fn add<T: ObjectKind + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
-        let obj_ref = obj.upcast().into_ref();
+        let raw = obj.upcast().into_raw();
+        // SAFETY: `raw` is a unique, non-null owning pointer just produced by
+        // `OwnedObject::into_raw`. Ownership transfers to the `UnsafeRef`,
+        // which is then handed to the intrusive list; the pool's `Drop`
+        // reclaims it. The pool is the sole originator of `UnsafeRef<Object>`
+        // in the crate, which keeps the alloc tied to the pool's lifetime.
+        let obj_ref = unsafe { UnsafeRef::from_raw(raw) };
         self.0.push_front(obj_ref.clone());
         obj_ref
     }
@@ -22,12 +28,11 @@ impl Drop for ObjectPool {
         while let Some(obj_ref) = self.0.pop_front() {
             let raw = UnsafeRef::into_raw(obj_ref);
             // SAFETY: every entry in the list was inserted by `add`, which
-            // received the `UnsafeRef` from `OwnedObject::into_ref` after
-            // upcasting a `Box<T: ObjectKind>`. So `raw` originates from
-            // `OwnedObject::into_raw` and is the unique owning pointer at drop
-            // time — callers of `add` are responsible for not retaining the
-            // returned `UnsafeRef` past the pool's lifetime (the standard
-            // `UnsafeRef` contract).
+            // wrapped the raw pointer from `OwnedObject::into_raw` after
+            // upcasting a `Box<T: ObjectKind>`. So `raw` is the unique owning
+            // pointer at drop time — callers of `add` are responsible for not
+            // retaining the returned `UnsafeRef` past the pool's lifetime (the
+            // standard `UnsafeRef` contract).
             drop(unsafe { OwnedObject::from_raw(raw) });
         }
     }

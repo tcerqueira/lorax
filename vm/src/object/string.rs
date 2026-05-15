@@ -131,7 +131,6 @@ mod tests {
     use intrusive_collections::UnsafeRef;
 
     use super::*;
-    use crate::object::OwnedObject;
 
     #[test]
     fn new_preserves_ascii() {
@@ -171,17 +170,13 @@ mod tests {
 
     #[test]
     fn upcast_downcast_roundtrip() {
-        let owned: OwnedObject = StringObj::boxed("roundtrip").upcast();
-        let obj_ref = owned.into_ref();
+        let mut pool = crate::object::pool::ObjectPool::new();
+        let obj_ref = pool.add(StringObj::boxed("roundtrip"));
         // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
         // dynamic kind is `StringObj`.
         let downcast = unsafe { obj_ref.downcast::<StringObj>() };
         assert_eq!(&**downcast, "roundtrip");
-
-        let raw = UnsafeRef::into_raw(downcast);
-        // SAFETY: `raw` traces back to `Box::into_raw(StringObj::boxed(...))`
-        // via the upcast/downcast roundtrip, so `Box::from_raw` is the matching
-        // ownership transfer.
-        drop(unsafe { Box::from_raw(raw) });
+        // Don't drop `downcast` — pool owns the alloc.
+        let _ = UnsafeRef::into_raw(downcast);
     }
 }
