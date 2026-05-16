@@ -75,6 +75,11 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Handle {
+    Value,
+}
+
 pub struct Compiler<'s, 'h> {
     scanner: Peekable<Scanner<'s>>,
     chunk: Chunk,
@@ -100,11 +105,11 @@ impl<'s, 'h> Compiler<'s, 'h> {
         self.chunk.write(OpCode::Return);
     }
 
-    fn parse_bp(&mut self, min_bp: u8) -> Result<(), CompileError> {
+    fn parse_bp(&mut self, min_bp: u8) -> Result<Handle, CompileError> {
         let lhs = self
             .advance()?
             .ok_or(ParsingError::expected(Span::default(), "token", "EOF"))?;
-        self.parse_prefix(lhs)?;
+        let mut handle = self.parse_prefix(lhs)?;
 
         loop {
             let op = match self.peek()? {
@@ -113,30 +118,22 @@ impl<'s, 'h> Compiler<'s, 'h> {
             };
 
             match op_bp(&op.ty) {
-                Some(OpBinding::Postfix(l_bp)) => {
-                    if l_bp < min_bp {
-                        break;
-                    }
+                Some(OpBinding::Postfix(l_bp)) if l_bp >= min_bp => {
                     let op = self.advance().unwrap().unwrap();
-                    self.parse_postfix(op)?;
-                    continue;
+                    handle = self.parse_postfix(op, handle)?;
                 }
-                Some(OpBinding::Infix(l_bp, _r_bp)) => {
-                    if l_bp < min_bp {
-                        break;
-                    }
+                Some(OpBinding::Infix(l_bp, _r_bp)) if l_bp >= min_bp => {
                     let op = self.advance().unwrap().unwrap();
-                    self.parse_infix(op)?;
-                    continue;
+                    handle = self.parse_infix(op, handle)?;
                 }
-                None => break,
+                _ => break,
             };
         }
 
-        Ok(())
+        Ok(handle)
     }
 
-    fn parse_prefix(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn parse_prefix(&mut self, tok: Token) -> Result<Handle, CompileError> {
         match tok.ty() {
             TokenType::LeftParen => self.grouping(tok),
             TokenType::Minus | TokenType::Bang => self.unary(tok),
@@ -147,7 +144,7 @@ impl<'s, 'h> Compiler<'s, 'h> {
         }
     }
 
-    fn parse_infix(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn parse_infix(&mut self, tok: Token, lhs: Handle) -> Result<Handle, CompileError> {
         match tok.ty() {
             TokenType::Plus
             | TokenType::Minus
@@ -158,21 +155,29 @@ impl<'s, 'h> Compiler<'s, 'h> {
             | TokenType::Greater
             | TokenType::GreaterEqual
             | TokenType::Less
-            | TokenType::LessEqual => self.binary(tok),
+            | TokenType::LessEqual => self.binary(tok, lhs),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
 
     #[expect(unused)]
-    fn parse_postfix(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn parse_postfix(&mut self, tok: Token, lhs: Handle) -> Result<Handle, CompileError> {
         unimplemented!("no postfix ops atm");
     }
 
     fn expression(&mut self) -> Result<(), CompileError> {
-        self.parse_bp(0)
+        let handle = self.parse_bp(0)?;
+        self.materialize(handle);
+        Ok(())
     }
 
-    fn number(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn materialize(&mut self, handle: Handle) {
+        match handle {
+            Handle::Value => {}
+        }
+    }
+
+    fn number(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let Token {
             ty: TokenType::Number(num),
             span,
@@ -182,10 +187,10 @@ impl<'s, 'h> Compiler<'s, 'h> {
         };
         self.chunk
             .write_constant_with_line(span.line_start, Value::number(num));
-        Ok(())
+        Ok(Handle::Value)
     }
 
-    fn string(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn string(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let Token {
             ty: TokenType::String(s),
             span,
@@ -196,18 +201,19 @@ impl<'s, 'h> Compiler<'s, 'h> {
         let obj = self.storage.add_internal_str(&s);
         self.chunk
             .write_constant_with_line(span.line_start, Value::object(obj));
-        Ok(())
+        Ok(Handle::Value)
     }
 
-    fn grouping(&mut self, _tok: Token) -> Result<(), CompileError> {
+    fn grouping(&mut self, _tok: Token) -> Result<Handle, CompileError> {
         self.expression()?;
         self.consume(TokenType::RightParen)?;
-        Ok(())
+        Ok(Handle::Value)
     }
 
-    fn unary(&mut self, op: Token) -> Result<(), CompileError> {
+    fn unary(&mut self, op: Token) -> Result<Handle, CompileError> {
         let r_bp = prefix_bp(op.ty()).expect("expected infix op token");
-        self.parse_bp(r_bp)?;
+        let operand = self.parse_bp(r_bp)?;
+        self.materialize(operand);
 
         let line = op.span.line_start;
         match op.ty() {
@@ -216,12 +222,14 @@ impl<'s, 'h> Compiler<'s, 'h> {
             _ => panic!("expected minus token as prefix"),
         };
 
-        Ok(())
+        Ok(Handle::Value)
     }
 
-    fn binary(&mut self, op: Token) -> Result<(), CompileError> {
+    fn binary(&mut self, op: Token, lhs: Handle) -> Result<Handle, CompileError> {
+        self.materialize(lhs);
         let (_l_bp, r_bp) = infix_bp(op.ty()).expect("expected infix op token");
-        self.parse_bp(r_bp)?;
+        let rhs = self.parse_bp(r_bp)?;
+        self.materialize(rhs);
 
         let line = op.span.line_start;
         #[rustfmt::skip]
@@ -238,10 +246,10 @@ impl<'s, 'h> Compiler<'s, 'h> {
             TokenType::LessEqual => write_with_line!(self.chunk, line, OpCode::Greater, OpCode::Not),
             _ => panic!("expected op tokens: + - * /"),
         };
-        Ok(())
+        Ok(Handle::Value)
     }
 
-    fn literal(&mut self, tok: Token) -> Result<(), CompileError> {
+    fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let line = tok.span.line_start;
         match tok.ty() {
             TokenType::True => self.chunk.write_with_line(line, OpCode::True),
@@ -249,7 +257,7 @@ impl<'s, 'h> Compiler<'s, 'h> {
             TokenType::Nil => self.chunk.write_with_line(line, OpCode::Nil),
             _ => panic!("expected literal tokens"),
         }
-        Ok(())
+        Ok(Handle::Value)
     }
 
     fn advance(&mut self) -> Result<Option<Token>, CompileError> {
@@ -314,12 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn string_concat() {
-        let _program = compile("\"a\" + \"b\"");
-    }
-
-    #[test]
-    fn string_equality() {
-        let _program = compile("\"a\" == \"a\"");
+    fn string_ops() {
+        let _program = compile("\"a\" + \"b\" == \"ab\"");
     }
 }
