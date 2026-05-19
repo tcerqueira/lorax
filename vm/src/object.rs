@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug, Formatter},
+    fmt::{self, Debug, Display, Formatter},
     mem,
     ops::Deref,
     ptr::NonNull,
@@ -157,12 +157,8 @@ impl Object {
     pub fn display_fmt(self: &UnsafeRef<Self>, f: &mut Formatter<'_>) -> fmt::Result {
         match self.kind() {
             // SAFETY: matched kind witnesses the dynamic type.
-            ObjKind::String => {
-                <StringObj as fmt::Display>::fmt(unsafe { self.downcast_ref::<StringObj>() }, f)
-            }
-            ObjKind::InternalStr => {
-                <InternalStr as fmt::Display>::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f)
-            }
+            ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<StringObj>() }, f),
+            ObjKind::InternalStr => Display::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f),
         }
     }
 }

@@ -38,8 +38,8 @@ use crate::{
 //
 // expression       => assignment ;
 // assignment       => IDENTIFIER "=" assignment | logicOr ;
-// logicOr         => logicAnd ( "or" logicAnd )*
-// logicAnd        => equality ( "and" equality )*
+// logicOr          => logicAnd ( "or" logicAnd )*
+// logicAnd         => equality ( "and" equality )*
 // equality         => comparison ( ("!=" | "==") comparison )* ;
 // comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
 // term             => factor ( ("-" | "+") factor )* ;

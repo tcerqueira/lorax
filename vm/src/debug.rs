@@ -104,6 +104,11 @@ impl OpCode {
             OpCode::Equal => write!(f, "OP_EQUAL"),
             OpCode::Greater => write!(f, "OP_GREATER"),
             OpCode::Less => write!(f, "OP_LESS"),
+            OpCode::Print => write!(f, "OP_PRINT"),
+            OpCode::Pop => write!(f, "OP_POP"),
+            OpCode::DefineGlobal(_) => todo!(),
+            OpCode::GetGlobal(_) => todo!(),
+            OpCode::SetGlobal(_) => todo!(),
         }
     }
 }

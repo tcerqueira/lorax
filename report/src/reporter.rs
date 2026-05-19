@@ -5,6 +5,7 @@ pub trait Report: Spanned {
     fn report(&self, source: &str);
 }
 
+#[derive(Clone, Copy)]
 pub struct Reporter<'s> {
     src: &'s str,
 }

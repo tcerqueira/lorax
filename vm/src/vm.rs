@@ -21,6 +21,7 @@ use crate::{
 pub struct VirtualMachine {
     stack: Vec<Value>,
     storage: Storage,
+    debug: bool,
 }
 
 #[derive(Debug, Error)]
@@ -32,11 +33,18 @@ pub enum VirtualMachineError {
 }
 
 impl VirtualMachine {
+    pub fn debug() -> Self {
+        Self {
+            debug: true,
+            ..Default::default()
+        }
+    }
+
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
-        // println!("{chunk:?}");
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
-            // self.trace(op);
+            self.trace(op);
+
             let invalid_operand_err = |_: ValueError| {
                 let span = chunk
                     .get_line(pc.stream_position().unwrap() - 1)
@@ -48,11 +56,6 @@ impl VirtualMachine {
             match op {
                 OpCode::NoOp => {}
                 OpCode::Return => {
-                    let v = self.stack_pop();
-                    match v {
-                        Value::Object(v) if v.is_str() => println!("{}", v.as_str(&self.storage)),
-                        v => println!("{v}"),
-                    };
                     return Ok(());
                 }
                 OpCode::Constant(addr) => {
@@ -93,6 +96,17 @@ impl VirtualMachine {
                     .binary_op(Value::greater)
                     .map_err(invalid_operand_err)?,
                 OpCode::Less => self.binary_op(Value::less).map_err(invalid_operand_err)?,
+                OpCode::Print => {
+                    let v = self.stack_pop();
+                    match v {
+                        Value::Object(v) if v.is_str() => println!("{}", v.as_str(&self.storage)),
+                        v => println!("{v}"),
+                    };
+                }
+                OpCode::Pop => _ = self.stack_pop(),
+                OpCode::DefineGlobal(_) => todo!(),
+                OpCode::GetGlobal(_) => todo!(),
+                OpCode::SetGlobal(_) => todo!(),
             }
         }
         Ok(())
@@ -194,8 +208,10 @@ impl VirtualMachine {
             .expect("compiler bug, nothing to peek on the VM stack")
     }
 
-    #[expect(dead_code)]
     fn trace(&self, op: OpCode) {
+        if !self.debug {
+            return;
+        }
         println!("--> {:?}", op);
         print!("--> {:>16}", "stack: [ ");
         let mut stack_iter = self.stack.iter().peekable();

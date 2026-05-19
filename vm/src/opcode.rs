@@ -28,6 +28,11 @@ pub enum OpCode {
     Equal = 0x0C,
     Greater = 0x0D,
     Less = 0x0E,
+    Print = 0x0F,
+    Pop = 0x10,
+    DefineGlobal(Addr) = 0x11,
+    GetGlobal(Addr) = 0x12,
+    SetGlobal(Addr) = 0x13,
 }
 
 impl Decode for OpCode {
@@ -39,7 +44,6 @@ impl Decode for OpCode {
             (0x00, _) => Ok((OpCode::NoOp, 1)),
             (0x01, _) => Ok((OpCode::Return, 1)),
             (0x02, 2..) => Ok((OpCode::Constant(buf[1]), 2)),
-            (0x02, few) => Err(OpDecodeError::insufficient(2, few)),
             (0x03, _) => Ok((OpCode::Neg, 1)),
             (0x04, _) => Ok((OpCode::Add, 1)),
             (0x05, _) => Ok((OpCode::Sub, 1)),
@@ -52,6 +56,12 @@ impl Decode for OpCode {
             (0x0C, _) => Ok((OpCode::Equal, 1)),
             (0x0D, _) => Ok((OpCode::Greater, 1)),
             (0x0E, _) => Ok((OpCode::Less, 1)),
+            (0x0F, _) => Ok((OpCode::Print, 1)),
+            (0x10, _) => Ok((OpCode::Pop, 1)),
+            (0x11, 2..) => Ok((OpCode::DefineGlobal(buf[1]), 2)),
+            (0x12, 2..) => Ok((OpCode::GetGlobal(buf[1]), 2)),
+            (0x13, 2..) => Ok((OpCode::SetGlobal(buf[1]), 2)),
+            (0x02 | 0x11 | 0x12 | 0x13, few) => Err(OpDecodeError::insufficient(2, few)),
             (unknown, _) => Err(OpDecodeError::unknown(unknown)),
         }
     }
@@ -79,6 +89,11 @@ impl Encode for OpCode {
             OpCode::Equal => write(&[0x0C]),
             OpCode::Greater => write(&[0x0D]),
             OpCode::Less => write(&[0x0E]),
+            OpCode::Print => write(&[0x0F]),
+            OpCode::Pop => write(&[0x10]),
+            OpCode::DefineGlobal(addr) => write(&[0x11, *addr]),
+            OpCode::GetGlobal(addr) => write(&[0x12, *addr]),
+            OpCode::SetGlobal(addr) => write(&[0x13, *addr]),
         }
     }
 }

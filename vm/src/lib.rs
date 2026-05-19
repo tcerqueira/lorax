@@ -15,7 +15,7 @@ use lexer::Scanner;
 use report::{Error, Reporter};
 
 use crate::{
-    compiler::{CompileError, Compiler},
+    compiler::Compiler,
     vm::{VirtualMachine, VirtualMachineError},
 };
 
@@ -37,7 +37,7 @@ pub fn run_file(path: &Path) -> Result<(), Error> {
 
 pub fn run_prompt() -> Result<(), Error> {
     let mut buf_reader = BufReader::new(io::stdin());
-    let mut vm = VirtualMachine::default();
+    let mut vm = VirtualMachine::debug();
     loop {
         print!("> ");
         io::stdout().flush().context("could not flush stdout")?;
@@ -58,12 +58,11 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let reporter = Reporter::new(&source);
     let scanner = Scanner::new(&source);
 
-    let mut compiler = Compiler::new(scanner, vm.storage());
-    let chunk = compiler.compile().inspect_err(|err| match err {
-        CompileError::Lexing(e) => reporter.report(e),
-        CompileError::Parsing(e) => reporter.report(e),
-        CompileError::Other(e) => reporter.report_unspanned(e),
-    })?;
+    let mut compiler = Compiler::new(scanner, reporter, vm.storage());
+    let chunk = compiler
+        .compile()
+        .inspect_err(|err| reporter.report_unspanned(err))?;
+    // println!("{chunk:?}");
 
     match vm.run(chunk) {
         Err(VirtualMachineError::Decode(err)) => {

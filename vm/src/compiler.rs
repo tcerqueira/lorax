@@ -1,14 +1,61 @@
 use std::iter::Peekable;
 
+use anyhow::bail;
+use lasso::Spur;
 use lexer::{
     Scanner,
     tokens::{Token, TokenType},
 };
-use report::error::ParsingError;
+use report::{Reporter, error::ParsingError};
 use report::{Span, error::LexingError};
 use thiserror::Error;
 
 use crate::{chunk::Chunk, opcode::OpCode, storage::Storage, value::Value, write_with_line};
+
+// program          => declaration* EOF ;
+//
+// declaration      => funDecl | varDecl | statement ;
+// statement        => exprStmt
+//                  | ifStmt;
+//                  | printStmt
+//                  | returnStmt
+//                  | whileStmt
+//                  | forStmt
+//                  | block ;
+// block            => "{" declaration* "}" ;
+//
+// funDecl          => "fun" function ;
+// function         => IDENTIFIER "(" parameters? ")" block ;
+// parameters       => IDENTIFIER ( "," IDENTIFIER )* ;
+//
+// varDecl          => "var" IDENTIFIER ( "=" expression )? ";" ;
+// exprStmt         => expression ";" ;
+// printStmt        => "print" expression ";" ;
+// returnStmt       => "return" expression? ";" ;
+// whileStmt        => "while" "(" expression ")" statement ;
+// forStmt          => "for" "(" ( varDecl | exprStmt | ";" )
+//                  expression? ";"
+//                  expression? ")" statement ;
+// ifStmt           => "if" "(" expression ")" statement
+//                  ( "else" statement )? ;
+//
+// expression       => assignment ;
+// assignment       => IDENTIFIER "=" assignment | logicOr ;
+// logicOr          => logicAnd ( "or" logicAnd )*
+// logicAnd         => equality ( "and" equality )*
+// equality         => comparison ( ("!=" | "==") comparison )* ;
+// comparison       => term ( (">" | ">=" | "<" | "<=") term )* ;
+// term             => factor ( ("-" | "+") factor )* ;
+// factor           => unary ( ("/" | "*") unary )* ;
+// unary            => ("!" | "-") unary
+//                  | call ;
+// call             => primary ( "(" arguments? ")" )* ;
+// arguments        => expression ( "," expression )* ;
+//
+// primary          => NUMBER | STRING
+//                  | "true" | "false" | "nil"
+//                  | "(" expression ")"
+//                  | IDENTIFIER ;
 
 #[derive(Debug, Error)]
 pub enum CompileError {
@@ -75,34 +122,52 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     })
 }
 
+#[expect(unused)]
 #[derive(Debug, Clone, Copy)]
 enum Handle {
     Value,
+    Place(Place),
 }
 
-pub struct Compiler<'s, 'h> {
+#[expect(unused)]
+#[derive(Debug, Clone, Copy)]
+enum Place {
+    Global { name: Spur, line: u32 },
+}
+
+pub struct Compiler<'s, 't> {
     scanner: Peekable<Scanner<'s>>,
+    reporter: Reporter<'s>,
     chunk: Chunk,
-    storage: &'h mut Storage,
+    storage: &'t mut Storage,
+    errored: bool,
 }
 
-impl<'s, 'h> Compiler<'s, 'h> {
-    pub fn new(scanner: Scanner<'s>, storage: &'h mut Storage) -> Self {
+impl<'s, 't> Compiler<'s, 't> {
+    pub fn new(scanner: Scanner<'s>, reporter: Reporter<'s>, storage: &'t mut Storage) -> Self {
         Self {
             scanner: scanner.peekable(),
+            reporter,
             chunk: Chunk::default(),
             storage,
+            errored: false,
         }
     }
 
-    pub fn compile(&mut self) -> Result<Chunk, CompileError> {
-        self.expression()?;
+    pub fn compile(&mut self) -> Result<Chunk, anyhow::Error> {
+        while self.peek()?.is_some() {
+            if let Err(e) = self.declaration() {
+                self.errored = true;
+                self.report_err(e);
+                self.synchronize()?;
+            }
+        }
         self.end();
-        Ok(std::mem::take(&mut self.chunk))
-    }
 
-    pub fn end(&mut self) {
-        self.chunk.write(OpCode::Return);
+        match self.errored {
+            true => bail!("Compilation failed"),
+            false => Ok(std::mem::take(&mut self.chunk)),
+        }
     }
 
     fn parse_bp(&mut self, min_bp: u8) -> Result<Handle, CompileError> {
@@ -165,16 +230,53 @@ impl<'s, 'h> Compiler<'s, 'h> {
         unimplemented!("no postfix ops atm");
     }
 
+    fn materialize(&mut self, handle: Handle) {
+        match handle {
+            Handle::Value => {}
+            Handle::Place(_global @ Place::Global { .. }) => todo!("emit op set global"),
+        }
+    }
+
+    pub fn end(&mut self) {
+        self.chunk.write(OpCode::Return);
+    }
+
     fn expression(&mut self) -> Result<(), CompileError> {
         let handle = self.parse_bp(0)?;
         self.materialize(handle);
         Ok(())
     }
 
-    fn materialize(&mut self, handle: Handle) {
-        match handle {
-            Handle::Value => {}
+    fn declaration(&mut self) -> Result<(), CompileError> {
+        self.statement()
+    }
+
+    fn statement(&mut self) -> Result<(), CompileError> {
+        let Some(tok) = self.peek()? else {
+            return Ok(());
+        };
+        match tok.ty() {
+            TokenType::Print => self.print_stmt(),
+            _ => self.expression_stmt(),
         }
+    }
+
+    fn print_stmt(&mut self) -> Result<(), CompileError> {
+        let tok = self
+            .consume(TokenType::Print)
+            .expect("matched print token before entering this branch");
+        self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        self.chunk
+            .write_with_line(tok.span.line_start, OpCode::Print);
+        Ok(())
+    }
+
+    fn expression_stmt(&mut self) -> Result<(), CompileError> {
+        self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        self.chunk.write(OpCode::Pop);
+        Ok(())
     }
 
     fn number(&mut self, tok: Token) -> Result<Handle, CompileError> {
@@ -244,7 +346,7 @@ impl<'s, 'h> Compiler<'s, 'h> {
             TokenType::GreaterEqual => write_with_line!(self.chunk, line, OpCode::Less, OpCode::Not),
             TokenType::Less => self.chunk.write_with_line(line, OpCode::Less),
             TokenType::LessEqual => write_with_line!(self.chunk, line, OpCode::Greater, OpCode::Not),
-            _ => panic!("expected op tokens: + - * /"),
+            _ => panic!("unexpected binary token: {op}"),
         };
         Ok(Handle::Value)
     }
@@ -260,22 +362,61 @@ impl<'s, 'h> Compiler<'s, 'h> {
         Ok(Handle::Value)
     }
 
-    fn advance(&mut self) -> Result<Option<Token>, CompileError> {
-        self.scanner.next().transpose().map_err(Into::into)
+    fn synchronize(&mut self) -> Result<(), LexingError> {
+        // should only return errors in case of a lexing error
+        while let Some(tok) = self.advance()? {
+            match tok.ty() {
+                TokenType::Semicolon => return Ok(()),
+                _ => match self.peek()?.map(|t| t.ty()) {
+                    Some(
+                        TokenType::Class
+                        | TokenType::For
+                        | TokenType::Fun
+                        | TokenType::If
+                        | TokenType::Print
+                        | TokenType::Return
+                        | TokenType::Var
+                        | TokenType::While,
+                    ) => return Ok(()),
+                    _ => continue,
+                },
+            }
+        }
+        Ok(())
     }
 
-    fn peek(&mut self) -> Result<Option<&Token>, CompileError> {
+    pub fn report_err(&self, err: CompileError) {
+        match err {
+            CompileError::Lexing(e) => self.reporter.report(&e),
+            CompileError::Parsing(e) => self.reporter.report(&e),
+            CompileError::Other(e) => self.reporter.report_unspanned(&e),
+        }
+    }
+
+    fn advance(&mut self) -> Result<Option<Token>, LexingError> {
+        self.scanner.next().transpose()
+    }
+
+    fn peek(&mut self) -> Result<Option<&Token>, LexingError> {
         self.scanner
             .peek()
-            .map(|res| res.as_ref().map_err(|err| err.clone().into()))
+            .map(|res| res.as_ref().map_err(|err| err.clone()))
             .transpose()
     }
 
-    fn consume(&mut self, pattern: TokenType) -> Result<Option<Token>, CompileError> {
+    fn consume(&mut self, pattern: TokenType) -> Result<Token, CompileError> {
         match self.advance()? {
-            Some(tok) if pattern == tok.ty => Ok(Some(tok)),
+            Some(tok) if pattern == tok.ty => Ok(tok),
             Some(tok) => Err(ParsingError::expected(&tok, pattern, &tok).into()),
             None => Err(ParsingError::expected(Span::default(), pattern, TokenType::Eof).into()),
+        }
+    }
+
+    #[expect(unused)]
+    fn advance_if(&mut self, pattern: TokenType) -> Result<Option<Token>, LexingError> {
+        match self.peek()? {
+            Some(tok) if pattern == tok.ty => self.advance(),
+            Some(_) | None => Ok(None),
         }
     }
 }
@@ -286,43 +427,43 @@ mod tests {
 
     fn compile(src: &str) -> Chunk {
         let mut storage = Storage::new();
-        Compiler::new(Scanner::new(src), &mut storage)
+        Compiler::new(Scanner::new(src), Reporter::new(src), &mut storage)
             .compile()
             .unwrap()
     }
 
     #[test]
     fn challenge() {
-        let _program = compile("(-1 + 2) * 3 - -4");
+        let _program = compile("(-1 + 2) * 3 - -4;");
     }
 
     #[test]
     fn arithmetic() {
-        let _program = compile("2 * 3 + 4");
+        let _program = compile("2 * 3 + 4;");
     }
 
     #[test]
     fn prefix() {
-        let _program = compile("-2 * 3 + 4");
+        let _program = compile("-2 * 3 + 4;");
     }
 
     #[test]
     fn grouping() {
-        let _program = compile("2 * (3 + 4)");
+        let _program = compile("2 * (3 + 4);");
     }
 
     #[test]
     fn logical() {
-        let _program = compile("!(5 - 4 > 3 * 2 == !nil)");
+        let _program = compile("!(5 - 4 > 3 * 2 == !nil);");
     }
 
     #[test]
     fn string_literal() {
-        let _program = compile("\"hello\"");
+        let _program = compile("\"hello\";");
     }
 
     #[test]
     fn string_ops() {
-        let _program = compile("\"a\" + \"b\" == \"ab\"");
+        let _program = compile("\"a\" + \"b\" == \"ab\";");
     }
 }
