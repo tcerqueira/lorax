@@ -8,7 +8,7 @@ use crate::object::{Object, ObjectKind};
 #[derive(Debug)]
 pub struct InternalStr {
     _obj: Object,
-    key: Spur,
+    pub key: Spur,
 }
 
 impl InternalStr {

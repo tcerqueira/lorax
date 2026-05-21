@@ -61,12 +61,12 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let mut compiler = Compiler::new(scanner, reporter, vm.storage());
     let chunk = compiler
         .compile()
+        .inspect(|chunk| println!("{chunk:?}"))
         .inspect_err(|err| reporter.report_unspanned(err))?;
-    // println!("{chunk:?}");
 
     match vm.run(chunk) {
         Err(VirtualMachineError::Decode(err)) => {
-            let err = anyhow::Error::new(err).context("malformed chunk");
+            let err = anyhow::Error::new(err).context("Corrupted chunk");
             reporter.report_unspanned(&err);
             Err(err.into())
         }

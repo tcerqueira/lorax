@@ -1,9 +1,11 @@
 use std::{
+    collections::HashMap,
     io::{Cursor, Seek},
-    mem,
+    mem::{self, transmute},
     ops::{Add, Div, Mul, Sub},
 };
 
+use lasso::Spur;
 use report::error::RuntimeError;
 use thiserror::Error;
 
@@ -14,13 +16,14 @@ use crate::{
     object::{ObjKind, internal_str::InternalStr, string::StringObj},
     opcode::{OpCode, OpDecodeError},
     storage::Storage,
-    value::{Value, ValueError},
+    value::{Addr, Value, ValueError},
 };
 
 #[derive(Default)]
 pub struct VirtualMachine {
     stack: Vec<Value>,
     storage: Storage,
+    globals: HashMap<Spur, Value>,
     debug: bool,
 }
 
@@ -104,7 +107,13 @@ impl VirtualMachine {
                     };
                 }
                 OpCode::Pop => _ = self.stack_pop(),
-                OpCode::DefineGlobal(_) => todo!(),
+                OpCode::DefineGlobal(addr) => {
+                    // Keep the value on the stack as a GC root until after the insert returns
+                    let key = self.variable_name(&chunk, addr).key;
+                    let value = self.stack_peek(0).clone();
+                    self.globals.insert(key, value);
+                    self.stack_pop();
+                }
                 OpCode::GetGlobal(_) => todo!(),
                 OpCode::SetGlobal(_) => todo!(),
             }
@@ -153,17 +162,37 @@ impl VirtualMachine {
     }
 
     fn concatenate_str(&mut self) {
-        let (Value::Object(b), Value::Object(a)) = (self.stack_pop(), self.stack_pop()) else {
-            unreachable!("just matched Object in branch");
+        // Build the joined string while the operands stay on the stack as GC roots.
+        let s = {
+            let (Value::Object(a), Value::Object(b)) = (self.stack_peek(1), self.stack_peek(0))
+            else {
+                unreachable!("just matched Object in branch");
+            };
+            // PERF: create constructor that adds in place, reduces one allocation
+            let mut s = a.as_str(&self.storage).to_owned();
+            s.push_str(b.as_str(&self.storage));
+            s
         };
-        // SAFETY: we only call this function on the string objects branch
-        let a = a.as_str(&self.storage);
-        let b = b.as_str(&self.storage);
-        // PERF: create constructor that adds in place, reduces one allocation
-        let mut s = a.to_owned();
-        s.push_str(b);
         let obj = self.storage.heap.add(StringObj::boxed(&s));
+        self.stack_pop();
+        self.stack_pop();
         self.stack_push(Value::Object(obj));
+    }
+
+    fn variable_name<'a>(&'a self, chunk: &Chunk, addr: Addr) -> &'a InternalStr {
+        let Value::Object(name) = chunk.constant(addr) else {
+            panic!("could not get variable name: value is not an object of string type")
+        };
+        assert_eq!(
+            name.kind(),
+            ObjKind::InternalStr,
+            "could not get variable name: value is not an object of string type"
+        );
+        // SAFETY: all UnsafeRef objects are bound by Storage which has the same lifetime as &self
+        unsafe {
+            let name = name.downcast_ref::<InternalStr>();
+            transmute::<_, &'a InternalStr>(name)
+        }
     }
 
     fn stack_push(&mut self, value: Value) {

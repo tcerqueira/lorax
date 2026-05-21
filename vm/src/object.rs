@@ -14,7 +14,6 @@ use crate::{
 };
 
 pub mod internal_str;
-pub mod pool;
 pub mod string;
 
 /// A concrete object kind that can be stored behind an [`Object`] header.
@@ -45,7 +44,7 @@ pub struct Object {
     link: SinglyLinkedListLink,
 }
 
-intrusive_adapter!(ObjectAdapter = UnsafeRef<Object>: Object { link => SinglyLinkedListLink });
+intrusive_adapter!(pub ObjectAdapter = UnsafeRef<Object>: Object { link => SinglyLinkedListLink });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjKind {
@@ -85,7 +84,9 @@ impl Object {
     ///
     /// # Safety
     ///
-    /// The Object's dynamic kind must be `T`.
+    /// - The Object's dynamic kind must be `T`.
+    /// - No other `UnsafeRef<Object>` (or any other path) may alias the pointee
+    ///   for the duration of the returned borrow.
     pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(self: &mut UnsafeRef<Self>) -> &mut T {
         // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
         // valid `NonNull<T>`. The `&mut self` borrow guarantees the resulting

@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn upcast_downcast_roundtrip() {
-        let mut pool = crate::object::pool::ObjectPool::new();
+        let mut pool = crate::storage::ObjectPool::new();
         let obj_ref = pool.add(StringObj::boxed("roundtrip"));
         // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
         // dynamic kind is `StringObj`.

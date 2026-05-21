@@ -46,17 +46,19 @@ impl Chunk {
         };
     }
 
-    pub fn write_constant(&mut self, value: Value) {
+    pub fn write_constant(&mut self, value: Value) -> Addr {
         let addr = self.add_constant(value);
         self.write(OpCode::Constant(addr));
+        addr
     }
 
-    pub fn write_constant_with_line(&mut self, line: u32, value: Value) {
+    pub fn write_constant_with_line(&mut self, line: u32, value: Value) -> Addr {
         let addr = self.add_constant(value);
         self.write_with_line(line, OpCode::Constant(addr));
+        addr
     }
 
-    fn add_constant(&mut self, value: Value) -> Addr {
+    pub fn add_constant(&mut self, value: Value) -> Addr {
         assert!(
             self.constants.len() < u8::MAX as usize,
             "can't have more than 255 constants per chunk"

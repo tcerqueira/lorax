@@ -1,4 +1,4 @@
-use std::iter::Peekable;
+use std::{fmt::Display, iter::Peekable};
 
 use anyhow::bail;
 use lasso::Spur;
@@ -10,7 +10,12 @@ use report::{Reporter, error::ParsingError};
 use report::{Span, error::LexingError};
 use thiserror::Error;
 
-use crate::{chunk::Chunk, opcode::OpCode, storage::Storage, value::Value, write_with_line};
+use crate::{
+    chunk::Chunk,
+    opcode::OpCode,
+    storage::Storage,
+    value::{Addr, Value},
+};
 
 // program          => declaration* EOF ;
 //
@@ -230,6 +235,27 @@ impl<'s, 't> Compiler<'s, 't> {
         unimplemented!("no postfix ops atm");
     }
 
+    fn ident_constant(&mut self, tok: &Token) -> Value {
+        let obj_ref = self.storage.add_internal_str(tok.as_str().as_ref());
+        Value::object(obj_ref)
+    }
+
+    fn parse_variable(&mut self) -> Result<(Token, Addr), CompileError> {
+        let ident = self.consume_with(
+            |t| matches!(t, TokenType::Identifier(_)),
+            "variable identifier",
+        )?;
+        // Add the name to the constant pool but don't emit OP_CONSTANT — the
+        // name is only an operand for OP_DEFINE_GLOBAL, not a runtime value.
+        let value = self.ident_constant(&ident);
+        let addr = self.chunk.add_constant(value);
+        Ok((ident, addr))
+    }
+
+    fn define_variable(&mut self, semicolon: Token, addr: Addr) {
+        self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
+    }
+
     fn materialize(&mut self, handle: Handle) {
         match handle {
             Handle::Value => {}
@@ -238,7 +264,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     pub fn end(&mut self) {
-        self.chunk.write(OpCode::Return);
+        self.emit_op(OpCode::Return);
     }
 
     fn expression(&mut self) -> Result<(), CompileError> {
@@ -248,7 +274,28 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn declaration(&mut self) -> Result<(), CompileError> {
-        self.statement()
+        let Some(tok) = self.peek()? else {
+            return Ok(());
+        };
+
+        match tok.ty() {
+            TokenType::Var => self.var_decl(),
+            _ => self.statement(),
+        }
+    }
+
+    fn var_decl(&mut self) -> Result<(), CompileError> {
+        self.consume(TokenType::Var)?;
+        let (tok, global) = self.parse_variable()?;
+
+        match self.advance_if(TokenType::Equal)? {
+            Some(_) => self.expression()?,
+            None => self.emit_op_and_line(tok.span.line_start, OpCode::Nil),
+        }
+        let tok = self.consume(TokenType::Semicolon)?;
+
+        self.define_variable(tok, global);
+        Ok(())
     }
 
     fn statement(&mut self) -> Result<(), CompileError> {
@@ -267,15 +314,14 @@ impl<'s, 't> Compiler<'s, 't> {
             .expect("matched print token before entering this branch");
         self.expression()?;
         self.consume(TokenType::Semicolon)?;
-        self.chunk
-            .write_with_line(tok.span.line_start, OpCode::Print);
+        self.emit_op_and_line(tok.span.line_start, OpCode::Print);
         Ok(())
     }
 
     fn expression_stmt(&mut self) -> Result<(), CompileError> {
         self.expression()?;
         self.consume(TokenType::Semicolon)?;
-        self.chunk.write(OpCode::Pop);
+        self.emit_op(OpCode::Pop);
         Ok(())
     }
 
@@ -287,8 +333,7 @@ impl<'s, 't> Compiler<'s, 't> {
         else {
             unreachable!("expected number token");
         };
-        self.chunk
-            .write_constant_with_line(span.line_start, Value::number(num));
+        self.emit_constant_and_line(span.line_start, Value::number(num));
         Ok(Handle::Value)
     }
 
@@ -301,8 +346,7 @@ impl<'s, 't> Compiler<'s, 't> {
             unreachable!("expected string token");
         };
         let obj = self.storage.add_internal_str(&s);
-        self.chunk
-            .write_constant_with_line(span.line_start, Value::object(obj));
+        self.emit_constant_and_line(span.line_start, Value::object(obj));
         Ok(Handle::Value)
     }
 
@@ -319,8 +363,8 @@ impl<'s, 't> Compiler<'s, 't> {
 
         let line = op.span.line_start;
         match op.ty() {
-            TokenType::Minus => self.chunk.write_with_line(line, OpCode::Neg),
-            TokenType::Bang => self.chunk.write_with_line(line, OpCode::Not),
+            TokenType::Minus => self.emit_op_and_line(line, OpCode::Neg),
+            TokenType::Bang => self.emit_op_and_line(line, OpCode::Not),
             _ => panic!("expected minus token as prefix"),
         };
 
@@ -336,16 +380,25 @@ impl<'s, 't> Compiler<'s, 't> {
         let line = op.span.line_start;
         #[rustfmt::skip]
         match op.ty() {
-            TokenType::Plus => self.chunk.write_with_line(line, OpCode::Add),
-            TokenType::Minus => self.chunk.write_with_line(line, OpCode::Sub),
-            TokenType::Star => self.chunk.write_with_line(line, OpCode::Mul),
-            TokenType::Slash => self.chunk.write_with_line(line, OpCode::Div),
-            TokenType::BangEqual => write_with_line!(self.chunk, line, OpCode::Equal, OpCode::Not),
-            TokenType::EqualEqual => self.chunk.write_with_line(line, OpCode::Equal),
-            TokenType::Greater => self.chunk.write_with_line(line, OpCode::Greater),
-            TokenType::GreaterEqual => write_with_line!(self.chunk, line, OpCode::Less, OpCode::Not),
-            TokenType::Less => self.chunk.write_with_line(line, OpCode::Less),
-            TokenType::LessEqual => write_with_line!(self.chunk, line, OpCode::Greater, OpCode::Not),
+            TokenType::Plus => self.emit_op_and_line(line, OpCode::Add),
+            TokenType::Minus => self.emit_op_and_line(line, OpCode::Sub),
+            TokenType::Star => self.emit_op_and_line(line, OpCode::Mul),
+            TokenType::Slash => self.emit_op_and_line(line, OpCode::Div),
+            TokenType::BangEqual => {
+                self.emit_op_and_line(line, OpCode::Equal);
+                self.emit_op_and_line(line, OpCode::Not);
+            }
+            TokenType::EqualEqual => self.emit_op_and_line(line, OpCode::Equal),
+            TokenType::Greater => self.emit_op_and_line(line, OpCode::Greater),
+            TokenType::GreaterEqual => {
+                self.emit_op_and_line(line, OpCode::Less);
+                self.emit_op_and_line(line, OpCode::Not);
+            }
+            TokenType::Less => self.emit_op_and_line(line, OpCode::Less),
+            TokenType::LessEqual => {
+                self.emit_op_and_line(line, OpCode::Greater);
+                self.emit_op_and_line(line, OpCode::Not);
+            }
             _ => panic!("unexpected binary token: {op}"),
         };
         Ok(Handle::Value)
@@ -354,9 +407,9 @@ impl<'s, 't> Compiler<'s, 't> {
     fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let line = tok.span.line_start;
         match tok.ty() {
-            TokenType::True => self.chunk.write_with_line(line, OpCode::True),
-            TokenType::False => self.chunk.write_with_line(line, OpCode::False),
-            TokenType::Nil => self.chunk.write_with_line(line, OpCode::Nil),
+            TokenType::True => self.emit_op_and_line(line, OpCode::True),
+            TokenType::False => self.emit_op_and_line(line, OpCode::False),
+            TokenType::Nil => self.emit_op_and_line(line, OpCode::Nil),
             _ => panic!("expected literal tokens"),
         }
         Ok(Handle::Value)
@@ -393,6 +446,18 @@ impl<'s, 't> Compiler<'s, 't> {
         }
     }
 
+    fn emit_op(&mut self, op: OpCode) {
+        self.chunk.write(op);
+    }
+
+    fn emit_op_and_line(&mut self, line: u32, op: OpCode) {
+        self.chunk.write_with_line(line, op);
+    }
+
+    fn emit_constant_and_line(&mut self, line: u32, value: Value) -> Addr {
+        self.chunk.write_constant_with_line(line, value)
+    }
+
     fn advance(&mut self) -> Result<Option<Token>, LexingError> {
         self.scanner.next().transpose()
     }
@@ -412,7 +477,20 @@ impl<'s, 't> Compiler<'s, 't> {
         }
     }
 
-    #[expect(unused)]
+    fn consume_with(
+        &mut self,
+        pattern_fn: impl FnOnce(&TokenType) -> bool,
+        expected_item: impl Display,
+    ) -> Result<Token, CompileError> {
+        match self.advance()? {
+            Some(tok) if pattern_fn(&tok.ty) => Ok(tok),
+            Some(tok) => Err(ParsingError::expected(&tok, expected_item, &tok).into()),
+            None => {
+                Err(ParsingError::expected(Span::default(), expected_item, TokenType::Eof).into())
+            }
+        }
+    }
+
     fn advance_if(&mut self, pattern: TokenType) -> Result<Option<Token>, LexingError> {
         match self.peek()? {
             Some(tok) if pattern == tok.ty => self.advance(),
