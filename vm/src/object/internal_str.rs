@@ -2,7 +2,10 @@ use std::fmt::{self, Display, Formatter};
 
 use lasso::{Rodeo, Spur};
 
-use crate::object::{Object, ObjectKind};
+use crate::{
+    object::{Object, ObjectKind},
+    storage::Storage,
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -20,8 +23,8 @@ impl InternalStr {
         }
     }
 
-    pub fn as_str<'a>(&self, strings: &'a Rodeo) -> &'a str {
-        strings.resolve(&self.key)
+    pub fn as_str<'a>(&self, storage: &'a Storage) -> &'a str {
+        storage.resolve_internal_str(&self.key)
     }
 }
 

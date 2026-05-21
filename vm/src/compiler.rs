@@ -210,6 +210,7 @@ impl<'s, 't> Compiler<'s, 't> {
             TokenType::Number(_) => self.number(tok),
             TokenType::String(_) => self.string(tok),
             TokenType::True | TokenType::False | TokenType::Nil => self.literal(tok),
+            TokenType::Identifier(_) => self.named_variable(tok),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
@@ -235,9 +236,9 @@ impl<'s, 't> Compiler<'s, 't> {
         unimplemented!("no postfix ops atm");
     }
 
-    fn ident_constant(&mut self, tok: &Token) -> Value {
+    fn ident_constant(&mut self, tok: &Token) -> Addr {
         let obj_ref = self.storage.add_internal_str(tok.as_str().as_ref());
-        Value::object(obj_ref)
+        self.chunk.add_constant(Value::object(obj_ref))
     }
 
     fn parse_variable(&mut self) -> Result<(Token, Addr), CompileError> {
@@ -245,15 +246,18 @@ impl<'s, 't> Compiler<'s, 't> {
             |t| matches!(t, TokenType::Identifier(_)),
             "variable identifier",
         )?;
-        // Add the name to the constant pool but don't emit OP_CONSTANT — the
-        // name is only an operand for OP_DEFINE_GLOBAL, not a runtime value.
-        let value = self.ident_constant(&ident);
-        let addr = self.chunk.add_constant(value);
+        let addr = self.ident_constant(&ident);
         Ok((ident, addr))
     }
 
     fn define_variable(&mut self, semicolon: Token, addr: Addr) {
         self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
+    }
+
+    fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
+        let addr = self.ident_constant(&tok);
+        self.emit_op_and_line(tok.span.line_start, OpCode::GetGlobal(addr));
+        Ok(Handle::Value)
     }
 
     fn materialize(&mut self, handle: Handle) {

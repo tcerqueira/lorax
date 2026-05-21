@@ -130,9 +130,7 @@ impl Object {
                 let s: &str = self.downcast_ref::<StringObj>().as_str();
                 mem::transmute::<&str, &'s str>(s)
             },
-            ObjKind::InternalStr => unsafe {
-                self.downcast_ref::<InternalStr>().as_str(&storage.strings)
-            },
+            ObjKind::InternalStr => unsafe { self.downcast_ref::<InternalStr>().as_str(storage) },
         }
     }
 }

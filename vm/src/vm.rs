@@ -114,7 +114,27 @@ impl VirtualMachine {
                     self.globals.insert(key, value);
                     self.stack_pop();
                 }
-                OpCode::GetGlobal(_) => todo!(),
+                OpCode::GetGlobal(addr) => {
+                    let key = self.variable_name(&chunk, addr).key;
+                    match self.globals.get(&key) {
+                        Some(value) => {
+                            let value = value.clone();
+                            self.stack_push(value);
+                        }
+                        None => {
+                            let name = self.storage.resolve_internal_str(&key);
+                            let span = chunk
+                                .get_line(pc.stream_position().unwrap() - 1)
+                                .map(LineInfo::to_span)
+                                .unwrap_or_default();
+                            return Err(RuntimeError::custom(
+                                span,
+                                format!("Undefined variable '{name}'"),
+                            )
+                            .into());
+                        }
+                    }
+                }
                 OpCode::SetGlobal(_) => todo!(),
             }
         }
@@ -173,7 +193,7 @@ impl VirtualMachine {
             s.push_str(b.as_str(&self.storage));
             s
         };
-        let obj = self.storage.heap.add(StringObj::boxed(&s));
+        let obj = self.storage.add_obj(StringObj::boxed(&s));
         self.stack_pop();
         self.stack_pop();
         self.stack_push(Value::Object(obj));

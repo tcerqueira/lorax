@@ -1,12 +1,12 @@
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
-use lasso::Rodeo;
+use lasso::{Rodeo, Spur};
 
 use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject, internal_str::InternalStr};
 
 #[derive(Default)]
 pub struct Storage {
-    pub heap: ObjectPool,
-    pub strings: Rodeo,
+    heap: ObjectPool,
+    strings: Rodeo,
 }
 
 impl Storage {
@@ -21,6 +21,10 @@ impl Storage {
     pub fn add_internal_str(&mut self, s: &str) -> UnsafeRef<Object> {
         let internal_str = Box::new(InternalStr::new(&mut self.strings, s));
         self.heap.add(internal_str)
+    }
+
+    pub fn resolve_internal_str(&self, key: &Spur) -> &str {
+        self.strings.resolve(key)
     }
 }
 

@@ -37,7 +37,7 @@ pub fn run_file(path: &Path) -> Result<(), Error> {
 
 pub fn run_prompt() -> Result<(), Error> {
     let mut buf_reader = BufReader::new(io::stdin());
-    let mut vm = VirtualMachine::debug();
+    let mut vm = VirtualMachine::default();
     loop {
         print!("> ");
         io::stdout().flush().context("could not flush stdout")?;
@@ -61,7 +61,7 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
     let mut compiler = Compiler::new(scanner, reporter, vm.storage());
     let chunk = compiler
         .compile()
-        .inspect(|chunk| println!("{chunk:?}"))
+        // .inspect(|chunk| println!("{chunk:?}"))
         .inspect_err(|err| reporter.report_unspanned(err))?;
 
     match vm.run(chunk) {
