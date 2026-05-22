@@ -30,7 +30,7 @@ cargo test --test <backend> <module>::              # Single test module
 cargo test --test <backend> <module>::<test_name>   # Single test
 ```
 
-~114 tests are `#[ignore]` for unimplemented features (classes, `this`, `super`, some resolver checks). VM tests are all ignored.
+114 tree-walk tests are `#[ignore]` for unimplemented features (classes, `this`, `super`, some resolver checks). The VM test binary **shadows** `lox_tests!` locally to slap `#[ignore = "VM not yet implemented"]` on every case — the VM doesn't yet cover enough of Lox to share the test suite, so remove the shadow as features land.
 
 ## Workspace Crates
 
@@ -40,7 +40,7 @@ cargo test --test <backend> <module>::<test_name>   # Single test
 | `lexer` | Tokenizer/scanner, shared by both backends |
 | `report` | Error types (lexing, parsing, runtime) and source-span reporting |
 | `tree-walk` | Tree-walk interpreter: parser, resolver, interpreter |
-| `vm` | Bytecode VM: compiler (mostly `todo!()`), opcodes, stack VM |
+| `vm` | Bytecode VM: single-pass Pratt-parsing compiler, stack-based interpreter, custom heap |
 
 ## Architecture
 
@@ -56,13 +56,21 @@ Key flow in `tree-walk/src/lib.rs`:
 3. `Resolver::new(interpreter, arena).resolve(&program)` — variable scope resolution
 4. `interpreter.interpret(program, arena)` — evaluates AST
 
-### Key Design Patterns
+### Tree-walk design patterns
 
 - **AST arena allocation** (`tree-walk/src/parsing/ast.rs`): All AST nodes live in a `SlotMap`-backed `AstArena`. References are `ExprRef<'a>`/`StmtRef<'a>` smart pointers, avoiding `Box<Expr>` trees.
 - **Visitor pattern** (`tree-walk/src/parsing/visitor.rs`): `ExprVisitor`/`StmtVisitor` traits implemented by `Interpreter` and `Resolver`.
 - **Environment chain** (`tree-walk/src/runtime/environment.rs`): Scopes are a linked list (`Chain<T>`). Closures clone the chain to capture enclosing environments.
 - **Type-erased objects** (`tree-walk/src/runtime/object.rs`): `Object` wraps `Rc<dyn ObjectInternal>` supporting f64, String, bool, nil, Function, NativeFunction with runtime downcast.
 - **Control flow as values** (`tree-walk/src/runtime/control_flow.rs`): `Return`, `Break`, `Continue` propagate via a `ControlFlow` enum rather than exceptions.
+
+### VM design patterns
+
+- **Single-pass Pratt parser → bytecode** (`vm/src/compiler.rs`): no intermediate AST. `parse_bp` recurses by binding power; prefix/infix/postfix dispatch tables (`prefix_bp`/`infix_bp`/`postfix_bp`) gate the loop. Errors trigger `synchronize()` to skip to the next statement boundary so a single bad token doesn't poison the whole compile.
+- **`Handle` lvalue/rvalue threading**: `parse_*` methods return `Handle::Value` (already on the stack) or `Handle::Place` (deferred — emit `SetGlobal`/etc. on materialize). This is how `=` and global stores will be wired without a second pass.
+- **Encoded opcodes** (`vm/src/opcode.rs`, `vm/src/enconding.rs`): `OpCode` is `#[repr(u8)]` with inline operands; `Encode`/`Decode` traits serialize to/from the chunk's byte buffer. Adding an opcode means updating both arms plus the VM's `match`.
+- **Custom heap** (`vm/src/storage.rs`, `vm/src/object.rs`): `Storage` owns an `ObjectPool` (intrusive `SinglyLinkedList` of type-erased `UnsafeRef<Object>`) plus a `lasso::Rodeo` string interner. `Object` is a `#[repr(C)]` header with a `kind` tag; concrete types (`StringObj`, `InternalStr`) are downcast unsafely from the tag. `OwnedObject::drop` dispatches on `kind` to free the correct DST layout — `Box<Object>` alone can't, because the alloc is oversized.
+- **`InternalStr` for identifiers, `StringObj` for runtime strings**: identifier constants in the chunk use interned `Spur` keys (cheap equality, used for globals lookup); runtime strings (e.g. concat results) are `StringObj` with inline buffers. `Object::eq` panics on mixed kinds — the VM's `equal` op routes through `as_str` instead.
 
 ## Lox Implementation Status
 
@@ -77,15 +85,18 @@ Key flow in `tree-walk/src/lib.rs`:
 - Native function: `clock()`
 - REPL
 
-### Not implemented
+### Not implemented (tree-walk)
 
 - Classes, instances, methods, properties
 - `this` keyword
 - Inheritance, `super` keyword
 - Resolver strictness: duplicate local/parameter detection, self-referencing initializer detection
-- Bytecode VM compiler (opcodes and VM skeleton exist, compiler is stubbed with `todo!()`)
+
+### VM status
+
+Walking the book's "Compiling Expressions" / "Global Variables" chapters. Implemented: literals (`true`/`false`/`nil`/numbers/strings), unary `-`/`!`, all arithmetic/comparison/equality ops, string concatenation, `print`, expression statements, global `var` declarations and reads, error reporting + `synchronize()`. **`SetGlobal` (assignment) is still `todo!()`** — and there are no locals, control flow, functions, or classes yet, so the VM cannot run most programs in `tests/sources/`.
 
 ## Toolchain
 
-- **Nightly Rust** required (`rust-toolchain.toml`) — uses `#![feature(formatting_options)]` and `#![feature(error_iter)]`.
+- **Nightly Rust** required (`rust-toolchain.toml`). Features in use across crates: `formatting_options`, `error_iter`; VM additionally uses `ptr_metadata`, `arbitrary_self_types`, `if_let_guard`.
 - **Edition 2024**.
