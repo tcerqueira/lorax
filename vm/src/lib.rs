@@ -35,6 +35,10 @@ pub fn run_file(path: &Path) -> Result<(), Error> {
     run(source, &mut VirtualMachine::default())
 }
 
+pub fn run_source(source: String) -> Result<(), Error> {
+    run(source, &mut VirtualMachine::debug())
+}
+
 pub fn run_prompt() -> Result<(), Error> {
     let mut buf_reader = BufReader::new(io::stdin());
     let mut vm = VirtualMachine::default();

@@ -5,7 +5,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Usage: rlox [script]")]
+    #[error("Usage: rlox [--vm] [script | -c source]")]
     Cli,
     #[error(transparent)]
     Interpreter(#[from] InterpreterError),

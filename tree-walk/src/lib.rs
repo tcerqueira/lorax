@@ -21,6 +21,10 @@ pub mod runtime;
 pub fn run_file(path: &Path) -> Result<(), Error> {
     let source = fs::read_to_string(path)
         .with_context(|| format!("could not read source file {}", path.display()))?;
+    run_source(source)
+}
+
+pub fn run_source(source: String) -> Result<(), Error> {
     run(source, &mut Interpreter::new(), &mut AstArena::default())
 }
 

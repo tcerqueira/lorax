@@ -16,6 +16,8 @@ cargo clippy                               # Lint
 
 cargo run -- script.lox                    # Run a Lox script (tree-walk)
 cargo run -- --vm script.lox               # Run with VM backend (incomplete)
+cargo run -- -c 'print 1 + 2;'             # Run inline source (tree-walk)
+cargo run -- --vm -c 'print 1 + 2;'        # Run inline source (VM)
 cargo run                                  # Interactive REPL
 ```
 
