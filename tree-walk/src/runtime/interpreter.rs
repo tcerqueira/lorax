@@ -169,11 +169,11 @@ impl ExprVisitor for &mut Interpreter {
 
         let callable = callee
             .as_callable()
-            .ok_or_else(|| RuntimeError::not_callable(this.current_span().clone()))?;
+            .ok_or_else(|| RuntimeError::not_callable(*this.current_span()))?;
 
         if callable.arity() as usize != args.len() {
             return Err(RuntimeError::arity(
-                this.current_span().clone(),
+                *this.current_span(),
                 callable.arity(),
                 args.len(),
             ));

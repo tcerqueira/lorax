@@ -46,6 +46,6 @@ impl Report for Error {
 
 impl Spanned for Error {
     fn span(&self) -> Span {
-        self.span.clone()
+        self.span
     }
 }

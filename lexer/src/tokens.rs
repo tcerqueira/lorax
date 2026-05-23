@@ -121,7 +121,7 @@ impl Token {
 
 impl Spanned for Token {
     fn span(&self) -> Span {
-        self.span.clone()
+        self.span
     }
 }
 

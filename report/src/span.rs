@@ -4,7 +4,7 @@ pub trait Spanned {
     fn span(&self) -> Span;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -35,7 +35,7 @@ impl<S: Spanned> Spanned for &S {
 
 impl Spanned for Span {
     fn span(&self) -> Span {
-        self.clone()
+        *self
     }
 }
 

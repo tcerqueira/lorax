@@ -320,13 +320,13 @@ impl Spanned for AstRef<'_, ExprGrouping> {
 
 impl Spanned for AstRef<'_, ExprLiteral> {
     fn span(&self) -> Span {
-        self.token.span.clone()
+        self.token.span
     }
 }
 
 impl Spanned for AstRef<'_, ExprVariable> {
     fn span(&self) -> Span {
-        self.name.span.clone()
+        self.name.span
     }
 }
 
