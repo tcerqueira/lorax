@@ -7,19 +7,19 @@ use std::{
 
 use lasso::Spur;
 use report::error::RuntimeError;
-use thiserror::Error;
 
 use crate::{
     chunk::Chunk,
     debug::LineInfo,
-    enconding::{DecodeError, OpDecoder},
+    enconding::OpDecoder,
     object::{ObjKind, internal_str::InternalStr, string::StringObj},
-    opcode::{OpCode, OpDecodeError},
+    opcode::OpCode,
     storage::Storage,
     value::{Addr, Value, ValueError},
-    vm::stack::Stack,
+    vm::{error::VirtualMachineError, stack::Stack},
 };
 
+pub mod error;
 pub mod stack;
 
 #[derive(Default)]
@@ -30,20 +30,16 @@ pub struct VirtualMachine {
     debug: bool,
 }
 
-#[derive(Debug, Error)]
-pub enum VirtualMachineError {
-    #[error(transparent)]
-    Decode(#[from] DecodeError<OpDecodeError>),
-    #[error(transparent)]
-    Runtime(#[from] RuntimeError),
-}
-
 impl VirtualMachine {
     pub fn debug() -> Self {
         Self {
             debug: true,
             ..Default::default()
         }
+    }
+
+    pub fn storage(&mut self) -> &mut Storage {
+        &mut self.storage
     }
 
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
@@ -142,23 +138,6 @@ impl VirtualMachine {
         Ok(())
     }
 
-    pub fn storage(&mut self) -> &mut Storage {
-        &mut self.storage
-    }
-
-    fn with_variable<T>(
-        &mut self,
-        chunk: &Chunk,
-        addr: Addr,
-        f: impl FnOnce(&mut VirtualMachine, Spur, Value) -> T,
-    ) -> T {
-        // Value stays on the stack across `f` so it remains a GC root if a
-        // future collector triggers during a globals rehash.
-        let key = self.variable_name(chunk, addr).key;
-        let value = self.stack.top().clone();
-        f(self, key, value)
-    }
-
     fn binary_op<F>(&mut self, op: F) -> Result<(), ValueError>
     where
         F: Fn(Value, Value) -> Result<Value, ValueError>,
@@ -211,6 +190,19 @@ impl VirtualMachine {
         self.stack.pop();
         self.stack.pop();
         self.stack.push(Value::Object(obj));
+    }
+
+    fn with_variable<T>(
+        &mut self,
+        chunk: &Chunk,
+        addr: Addr,
+        f: impl FnOnce(&mut VirtualMachine, Spur, Value) -> T,
+    ) -> T {
+        // Value stays on the stack across `f` so it remains a GC root if a
+        // future collector triggers during a globals rehash.
+        let key = self.variable_name(chunk, addr).key;
+        let value = self.stack.top().clone();
+        f(self, key, value)
     }
 
     fn variable_name<'a>(&'a self, chunk: &Chunk, addr: Addr) -> &'a InternalStr {

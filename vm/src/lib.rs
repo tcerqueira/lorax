@@ -16,7 +16,7 @@ use report::{Error, Reporter};
 
 use crate::{
     compiler::Compiler,
-    vm::{VirtualMachine, VirtualMachineError},
+    vm::{VirtualMachine, error::VirtualMachineError},
 };
 
 pub mod chunk;

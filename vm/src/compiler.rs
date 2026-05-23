@@ -7,14 +7,16 @@ use lexer::{
 };
 use report::{Reporter, error::ParsingError};
 use report::{Span, error::LexingError};
-use thiserror::Error;
 
 use crate::{
     chunk::Chunk,
+    compiler::error::CompileError,
     opcode::OpCode,
     storage::Storage,
     value::{Addr, Value},
 };
+
+pub mod error;
 
 // program          => declaration* EOF ;
 //
@@ -60,26 +62,6 @@ use crate::{
 //                  | "true" | "false" | "nil"
 //                  | "(" expression ")"
 //                  | IDENTIFIER ;
-
-#[derive(Debug, Error)]
-pub enum CompileError {
-    #[error(transparent)]
-    Lexing(#[from] LexingError),
-    #[error(transparent)]
-    Parsing(#[from] ParsingError),
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
-
-impl From<CompileError> for report::Error {
-    fn from(err: CompileError) -> Self {
-        match err {
-            CompileError::Lexing(e) => e.into(),
-            CompileError::Parsing(e) => e.into(),
-            CompileError::Other(e) => e.into(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 enum OpBinding {
@@ -178,6 +160,76 @@ impl<'s, 't> Compiler<'s, 't> {
         }
     }
 
+    pub fn end(&mut self) {
+        self.emit_op(OpCode::Return);
+    }
+
+    pub fn report_err(&self, err: CompileError) {
+        match err {
+            CompileError::Lexing(e) => self.reporter.report(&e),
+            CompileError::Parsing(e) => self.reporter.report(&e),
+            CompileError::Other(e) => self.reporter.report_unspanned(&e),
+        }
+    }
+
+    fn declaration(&mut self) -> Result<(), CompileError> {
+        let Some(tok) = self.peek()? else {
+            return Ok(());
+        };
+
+        match tok.ty() {
+            TokenType::Var => self.var_decl(),
+            _ => self.statement(),
+        }
+    }
+
+    fn var_decl(&mut self) -> Result<(), CompileError> {
+        self.consume(TokenType::Var)?;
+        let (tok, global) = self.parse_variable()?;
+
+        match self.advance_if(TokenType::Equal)? {
+            Some(_) => self.expression()?,
+            None => self.emit_op_and_line(tok.span.line_start, OpCode::Nil),
+        }
+        let tok = self.consume(TokenType::Semicolon)?;
+
+        self.define_variable(tok, global);
+        Ok(())
+    }
+
+    fn statement(&mut self) -> Result<(), CompileError> {
+        let Some(tok) = self.peek()? else {
+            return Ok(());
+        };
+        match tok.ty() {
+            TokenType::Print => self.print_stmt(),
+            _ => self.expression_stmt(),
+        }
+    }
+
+    fn print_stmt(&mut self) -> Result<(), CompileError> {
+        let tok = self
+            .consume(TokenType::Print)
+            .expect("matched print token before entering this branch");
+        self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        self.emit_op_and_line(tok.span.line_start, OpCode::Print);
+        Ok(())
+    }
+
+    fn expression_stmt(&mut self) -> Result<(), CompileError> {
+        self.expression()?;
+        self.consume(TokenType::Semicolon)?;
+        self.emit_op(OpCode::Pop);
+        Ok(())
+    }
+
+    fn expression(&mut self) -> Result<(), CompileError> {
+        let handle = self.parse_bp(0)?;
+        self.materialize(handle);
+        Ok(())
+    }
+
     fn parse_bp(&mut self, min_bp: u8) -> Result<Handle, CompileError> {
         let lhs = self
             .advance()?
@@ -240,106 +292,25 @@ impl<'s, 't> Compiler<'s, 't> {
         unimplemented!("no postfix ops atm");
     }
 
-    fn ident_constant(&mut self, tok: &Token) -> Addr {
-        let obj_ref = self.storage.add_internal_str(tok.as_str().as_ref());
-        self.chunk.add_constant(Value::object(obj_ref))
+    fn grouping(&mut self, _tok: Token) -> Result<Handle, CompileError> {
+        self.expression()?;
+        self.consume(TokenType::RightParen)?;
+        Ok(Handle::Value)
     }
 
-    fn parse_variable(&mut self) -> Result<(Token, Addr), CompileError> {
-        let ident = self.consume_with(
-            |t| matches!(t, TokenType::Identifier(_)),
-            "variable identifier",
-        )?;
-        let addr = self.ident_constant(&ident);
-        Ok((ident, addr))
-    }
+    fn unary(&mut self, op: Token) -> Result<Handle, CompileError> {
+        let r_bp = prefix_bp(op.ty()).expect("expected infix op token");
+        let operand = self.parse_bp(r_bp)?;
+        self.materialize(operand);
 
-    fn define_variable(&mut self, semicolon: Token, addr: Addr) {
-        self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
-    }
-
-    fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
-        let addr = self.ident_constant(&tok);
-        Ok(Handle::global(addr, tok.span.line_start))
-    }
-
-    fn materialize(&mut self, handle: Handle) {
-        match handle {
-            Handle::Value => {}
-            Handle::Place(Place::Global { addr, line }) => {
-                self.emit_op_and_line(line, OpCode::GetGlobal(addr));
-            }
-        }
-    }
-
-    fn store(&mut self, place: Place) {
-        match place {
-            Place::Global { addr, line } => {
-                self.emit_op_and_line(line, OpCode::SetGlobal(addr));
-            }
-        }
-    }
-
-    pub fn end(&mut self) {
-        self.emit_op(OpCode::Return);
-    }
-
-    fn expression(&mut self) -> Result<(), CompileError> {
-        let handle = self.parse_bp(0)?;
-        self.materialize(handle);
-        Ok(())
-    }
-
-    fn declaration(&mut self) -> Result<(), CompileError> {
-        let Some(tok) = self.peek()? else {
-            return Ok(());
+        let line = op.span.line_start;
+        match op.ty() {
+            TokenType::Minus => self.emit_op_and_line(line, OpCode::Neg),
+            TokenType::Bang => self.emit_op_and_line(line, OpCode::Not),
+            _ => panic!("expected minus token as prefix"),
         };
 
-        match tok.ty() {
-            TokenType::Var => self.var_decl(),
-            _ => self.statement(),
-        }
-    }
-
-    fn var_decl(&mut self) -> Result<(), CompileError> {
-        self.consume(TokenType::Var)?;
-        let (tok, global) = self.parse_variable()?;
-
-        match self.advance_if(TokenType::Equal)? {
-            Some(_) => self.expression()?,
-            None => self.emit_op_and_line(tok.span.line_start, OpCode::Nil),
-        }
-        let tok = self.consume(TokenType::Semicolon)?;
-
-        self.define_variable(tok, global);
-        Ok(())
-    }
-
-    fn statement(&mut self) -> Result<(), CompileError> {
-        let Some(tok) = self.peek()? else {
-            return Ok(());
-        };
-        match tok.ty() {
-            TokenType::Print => self.print_stmt(),
-            _ => self.expression_stmt(),
-        }
-    }
-
-    fn print_stmt(&mut self) -> Result<(), CompileError> {
-        let tok = self
-            .consume(TokenType::Print)
-            .expect("matched print token before entering this branch");
-        self.expression()?;
-        self.consume(TokenType::Semicolon)?;
-        self.emit_op_and_line(tok.span.line_start, OpCode::Print);
-        Ok(())
-    }
-
-    fn expression_stmt(&mut self) -> Result<(), CompileError> {
-        self.expression()?;
-        self.consume(TokenType::Semicolon)?;
-        self.emit_op(OpCode::Pop);
-        Ok(())
+        Ok(Handle::Value)
     }
 
     fn number(&mut self, tok: Token) -> Result<Handle, CompileError> {
@@ -367,25 +338,20 @@ impl<'s, 't> Compiler<'s, 't> {
         Ok(Handle::Value)
     }
 
-    fn grouping(&mut self, _tok: Token) -> Result<Handle, CompileError> {
-        self.expression()?;
-        self.consume(TokenType::RightParen)?;
+    fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
+        let line = tok.span.line_start;
+        match tok.ty() {
+            TokenType::True => self.emit_op_and_line(line, OpCode::True),
+            TokenType::False => self.emit_op_and_line(line, OpCode::False),
+            TokenType::Nil => self.emit_op_and_line(line, OpCode::Nil),
+            _ => panic!("expected literal tokens"),
+        }
         Ok(Handle::Value)
     }
 
-    fn unary(&mut self, op: Token) -> Result<Handle, CompileError> {
-        let r_bp = prefix_bp(op.ty()).expect("expected infix op token");
-        let operand = self.parse_bp(r_bp)?;
-        self.materialize(operand);
-
-        let line = op.span.line_start;
-        match op.ty() {
-            TokenType::Minus => self.emit_op_and_line(line, OpCode::Neg),
-            TokenType::Bang => self.emit_op_and_line(line, OpCode::Not),
-            _ => panic!("expected minus token as prefix"),
-        };
-
-        Ok(Handle::Value)
+    fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
+        let addr = self.ident_constant(&tok);
+        Ok(Handle::global(addr, tok.span.line_start))
     }
 
     fn binary(&mut self, op: Token, lhs: Handle) -> Result<Handle, CompileError> {
@@ -432,46 +398,39 @@ impl<'s, 't> Compiler<'s, 't> {
         Ok(Handle::Value)
     }
 
-    fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
-        let line = tok.span.line_start;
-        match tok.ty() {
-            TokenType::True => self.emit_op_and_line(line, OpCode::True),
-            TokenType::False => self.emit_op_and_line(line, OpCode::False),
-            TokenType::Nil => self.emit_op_and_line(line, OpCode::Nil),
-            _ => panic!("expected literal tokens"),
-        }
-        Ok(Handle::Value)
-    }
-
-    fn synchronize(&mut self) -> Result<(), LexingError> {
-        // should only return errors in case of a lexing error
-        while let Some(tok) = self.advance()? {
-            match tok.ty() {
-                TokenType::Semicolon => return Ok(()),
-                _ => match self.peek()?.map(|t| t.ty()) {
-                    Some(
-                        TokenType::Class
-                        | TokenType::For
-                        | TokenType::Fun
-                        | TokenType::If
-                        | TokenType::Print
-                        | TokenType::Return
-                        | TokenType::Var
-                        | TokenType::While,
-                    ) => return Ok(()),
-                    _ => continue,
-                },
+    fn materialize(&mut self, handle: Handle) {
+        match handle {
+            Handle::Value => {}
+            Handle::Place(Place::Global { addr, line }) => {
+                self.emit_op_and_line(line, OpCode::GetGlobal(addr));
             }
         }
-        Ok(())
     }
 
-    pub fn report_err(&self, err: CompileError) {
-        match err {
-            CompileError::Lexing(e) => self.reporter.report(&e),
-            CompileError::Parsing(e) => self.reporter.report(&e),
-            CompileError::Other(e) => self.reporter.report_unspanned(&e),
+    fn store(&mut self, place: Place) {
+        match place {
+            Place::Global { addr, line } => {
+                self.emit_op_and_line(line, OpCode::SetGlobal(addr));
+            }
         }
+    }
+
+    fn ident_constant(&mut self, tok: &Token) -> Addr {
+        let obj_ref = self.storage.add_internal_str(tok.as_str().as_ref());
+        self.chunk.add_constant(Value::object(obj_ref))
+    }
+
+    fn parse_variable(&mut self) -> Result<(Token, Addr), CompileError> {
+        let ident = self.consume_with(
+            |t| matches!(t, TokenType::Identifier(_)),
+            "variable identifier",
+        )?;
+        let addr = self.ident_constant(&ident);
+        Ok((ident, addr))
+    }
+
+    fn define_variable(&mut self, semicolon: Token, addr: Addr) {
+        self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
     }
 
     fn emit_op(&mut self, op: OpCode) {
@@ -497,6 +456,13 @@ impl<'s, 't> Compiler<'s, 't> {
             .transpose()
     }
 
+    fn advance_if(&mut self, pattern: TokenType) -> Result<Option<Token>, LexingError> {
+        match self.peek()? {
+            Some(tok) if pattern == tok.ty => self.advance(),
+            Some(_) | None => Ok(None),
+        }
+    }
+
     fn consume(&mut self, pattern: TokenType) -> Result<Token, CompileError> {
         match self.advance()? {
             Some(tok) if pattern == tok.ty => Ok(tok),
@@ -519,11 +485,27 @@ impl<'s, 't> Compiler<'s, 't> {
         }
     }
 
-    fn advance_if(&mut self, pattern: TokenType) -> Result<Option<Token>, LexingError> {
-        match self.peek()? {
-            Some(tok) if pattern == tok.ty => self.advance(),
-            Some(_) | None => Ok(None),
+    fn synchronize(&mut self) -> Result<(), LexingError> {
+        // should only return errors in case of a lexing error
+        while let Some(tok) = self.advance()? {
+            match tok.ty() {
+                TokenType::Semicolon => return Ok(()),
+                _ => match self.peek()?.map(|t| t.ty()) {
+                    Some(
+                        TokenType::Class
+                        | TokenType::For
+                        | TokenType::Fun
+                        | TokenType::If
+                        | TokenType::Print
+                        | TokenType::Return
+                        | TokenType::Var
+                        | TokenType::While,
+                    ) => return Ok(()),
+                    _ => continue,
+                },
+            }
         }
+        Ok(())
     }
 }
 
