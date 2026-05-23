@@ -17,11 +17,14 @@ use crate::{
     opcode::{OpCode, OpDecodeError},
     storage::Storage,
     value::{Addr, Value, ValueError},
+    vm::stack::Stack,
 };
+
+pub mod stack;
 
 #[derive(Default)]
 pub struct VirtualMachine {
-    stack: Vec<Value>,
+    stack: Stack,
     storage: Storage,
     globals: HashMap<Spur, Value>,
     debug: bool,
@@ -43,7 +46,6 @@ impl VirtualMachine {
         }
     }
 
-    #[warn(clippy::unit_arg)]
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
@@ -56,10 +58,8 @@ impl VirtualMachine {
                     .unwrap_or_default()
             };
 
-            let invalid_operand_err = |_: ValueError| {
-                let span = make_span();
-                RuntimeError::custom(span, "invalid operand")
-            };
+            let invalid_operand_err =
+                |_: ValueError| RuntimeError::custom(make_span(), "invalid operand");
 
             match op {
                 OpCode::NoOp => {}
@@ -68,15 +68,15 @@ impl VirtualMachine {
                 }
                 OpCode::Constant(addr) => {
                     let constant = chunk.constant(addr);
-                    self.stack_push(constant.clone());
+                    self.stack.push(constant.clone());
                 }
                 OpCode::Neg => {
-                    let v = self.stack_top_mut();
+                    let v = self.stack.top_mut();
                     *v = (-v.clone()).map_err(invalid_operand_err)?;
                 }
                 OpCode::Add
                     if let (Value::Object(o1), Value::Object(o2)) =
-                        (self.stack_peek(0), self.stack_peek(1))
+                        (self.stack.peek(0), self.stack.peek(1))
                         && o1.is_str()
                         && o2.is_str() =>
                 {
@@ -87,16 +87,16 @@ impl VirtualMachine {
                 OpCode::Mul => self.binary_op(Value::mul).map_err(invalid_operand_err)?,
                 OpCode::Div => self.binary_op(Value::div).map_err(invalid_operand_err)?,
                 OpCode::True => {
-                    self.stack_push(Value::boolean(true));
+                    self.stack.push(Value::boolean(true));
                 }
                 OpCode::False => {
-                    self.stack_push(Value::boolean(false));
+                    self.stack.push(Value::boolean(false));
                 }
                 OpCode::Nil => {
-                    self.stack_push(Value::nil());
+                    self.stack.push(Value::nil());
                 }
                 OpCode::Not => {
-                    let v = self.stack_top_mut();
+                    let v = self.stack.top_mut();
                     *v = Value::Boolean(v.is_falsey());
                 }
                 OpCode::Equal => self.equal(),
@@ -105,36 +105,34 @@ impl VirtualMachine {
                     .map_err(invalid_operand_err)?,
                 OpCode::Less => self.binary_op(Value::less).map_err(invalid_operand_err)?,
                 OpCode::Print => {
-                    let v = self.stack_pop();
+                    let v = self.stack.pop();
                     match v {
                         Value::Object(v) if v.is_str() => println!("{}", v.as_str(&self.storage)),
                         v => println!("{v}"),
                     };
                 }
-                OpCode::Pop => _ = self.stack_pop(),
+                OpCode::Pop => _ = self.stack.pop(),
                 OpCode::DefineGlobal(addr) => {
                     self.with_variable(&chunk, addr, |vm, key, value| {
                         vm.globals.insert(key, value);
                     });
-                    self.stack_pop();
+                    self.stack.pop();
                 }
                 OpCode::GetGlobal(addr) => {
                     let key = self.variable_name(&chunk, addr).key;
                     match self.globals.get(&key) {
                         Some(value) => {
                             let value = value.clone();
-                            self.stack_push(value);
+                            self.stack.push(value);
                         }
                         None => return Err(RuntimeError::undefined(make_span()).into()),
                     }
                 }
                 OpCode::SetGlobal(addr) => {
                     self.with_variable(&chunk, addr, |vm, key, value| {
+                        #[allow(clippy::unit_arg)]
                         match vm.globals.entry(key) {
-                            Entry::Occupied(mut e) => {
-                                *e.get_mut() = value;
-                                Ok(())
-                            }
+                            Entry::Occupied(mut e) => Ok(*e.get_mut() = value),
                             Entry::Vacant(_) => Err(RuntimeError::undefined(make_span())),
                         }
                     })?;
@@ -157,7 +155,7 @@ impl VirtualMachine {
         // Value stays on the stack across `f` so it remains a GC root if a
         // future collector triggers during a globals rehash.
         let key = self.variable_name(chunk, addr).key;
-        let value = self.stack_peek(0).clone();
+        let value = self.stack.top().clone();
         f(self, key, value)
     }
 
@@ -165,18 +163,18 @@ impl VirtualMachine {
     where
         F: Fn(Value, Value) -> Result<Value, ValueError>,
     {
-        let b = self.stack_pop();
-        let a = self.stack_pop();
+        let b = self.stack.pop();
+        let a = self.stack.pop();
         let res = op(a, b)?;
-        self.stack_push(res);
+        self.stack.push(res);
         Ok(())
     }
 
     fn equal(&mut self) {
-        let b = self.stack_pop();
-        let a = self.stack_pop();
+        let b = self.stack.pop();
+        let a = self.stack.pop();
         if mem::discriminant(&a) != mem::discriminant(&b) {
-            return self.stack_push(Value::boolean(false));
+            return self.stack.push(Value::boolean(false));
         }
 
         let res = match (a, b) {
@@ -194,13 +192,13 @@ impl VirtualMachine {
             },
             (a, b) => a == b,
         };
-        self.stack_push(Value::boolean(res));
+        self.stack.push(Value::boolean(res));
     }
 
     fn concatenate_str(&mut self) {
         // Build the joined string while the operands stay on the stack as GC roots.
         let s = {
-            let (Value::Object(a), Value::Object(b)) = (self.stack_peek(1), self.stack_peek(0))
+            let (Value::Object(a), Value::Object(b)) = (self.stack.peek(1), self.stack.peek(0))
             else {
                 unreachable!("just matched Object in branch");
             };
@@ -210,9 +208,9 @@ impl VirtualMachine {
             s
         };
         let obj = self.storage.add_obj(StringObj::boxed(&s));
-        self.stack_pop();
-        self.stack_pop();
-        self.stack_push(Value::Object(obj));
+        self.stack.pop();
+        self.stack.pop();
+        self.stack.push(Value::Object(obj));
     }
 
     fn variable_name<'a>(&'a self, chunk: &Chunk, addr: Addr) -> &'a InternalStr {
@@ -229,48 +227,6 @@ impl VirtualMachine {
             let name = name.downcast_ref::<InternalStr>();
             transmute::<_, &'a InternalStr>(name)
         }
-    }
-
-    fn stack_push(&mut self, value: Value) {
-        self.stack.push(value);
-    }
-
-    fn stack_pop(&mut self) -> Value {
-        self.stack
-            .pop()
-            .expect("compiler bug, nothing to pop on the VM stack")
-    }
-
-    #[expect(dead_code)]
-    fn stack_top(&self) -> &Value {
-        // optimization for ops that pop 1 value and push 1 value
-        // allows mutation in place
-        self.stack
-            .last()
-            .expect("compiler bug, nothing on top of the VM stack")
-    }
-
-    fn stack_top_mut(&mut self) -> &mut Value {
-        // optimization for ops that pop 1 value and push 1 value
-        // allows mutation in place
-        self.stack
-            .last_mut()
-            .expect("compiler bug, nothing on top of the VM stack")
-    }
-
-    fn stack_peek(&self, distance: usize) -> &Value {
-        let len = self.stack.len();
-        self.stack
-            .get(len - distance - 1)
-            .expect("compiler bug, nothing to peek on the VM stack")
-    }
-
-    #[expect(dead_code)]
-    fn stack_peek_mut(&mut self, distance: usize) -> &mut Value {
-        let len = self.stack.len();
-        self.stack
-            .get_mut(len - distance - 1)
-            .expect("compiler bug, nothing to peek on the VM stack")
     }
 
     fn trace(&self, op: OpCode) {
