@@ -258,10 +258,15 @@ mod tests {
         assert!(obj.is_str());
     }
 
+    fn intern_obj(storage: &mut Storage, s: &str) -> UnsafeRef<Object> {
+        let key = storage.intern(s);
+        storage.add_obj(InternalStr::boxed(key))
+    }
+
     #[test]
     fn as_str_for_internal_str_kind() {
         let mut storage = Storage::new();
-        let obj_ref = storage.add_internal_str("interned");
+        let obj_ref = intern_obj(&mut storage, "interned");
         assert_eq!(obj_ref.as_str(&storage), "interned");
     }
 
@@ -277,16 +282,16 @@ mod tests {
     #[test]
     fn equal_internal_strings_compare_equal_via_object() {
         let mut storage = Storage::new();
-        let a = storage.add_internal_str("eq");
-        let b = storage.add_internal_str("eq");
+        let a = intern_obj(&mut storage, "eq");
+        let b = intern_obj(&mut storage, "eq");
         assert!(a.eq(&b));
     }
 
     #[test]
     fn distinct_internal_strings_not_equal_via_object() {
         let mut storage = Storage::new();
-        let a = storage.add_internal_str("a");
-        let b = storage.add_internal_str("b");
+        let a = intern_obj(&mut storage, "a");
+        let b = intern_obj(&mut storage, "b");
         assert!(!a.eq(&b));
     }
 
@@ -297,7 +302,7 @@ mod tests {
         // must route through `as_str` (the VM does this in `equal`).
         let mut storage = Storage::new();
         let s = storage.add_obj(StringObj::boxed("x"));
-        let i = storage.add_internal_str("x");
+        let i = intern_obj(&mut storage, "x");
         let _ = s.eq(&i);
     }
 }

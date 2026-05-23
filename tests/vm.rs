@@ -18,7 +18,7 @@ mod assignment {
         global,
         grouping,
         infix_operator,
-        #[ignore = "VM not yet implemented"] local,
+        local,
         prefix_operator,
         syntax,
         #[ignore = "VM not yet implemented"] to_this,
@@ -28,8 +28,8 @@ mod assignment {
 
 mod block {
     rlox::lox_tests!("block", [
-        #[ignore = "VM not yet implemented"] empty,
-        #[ignore = "VM not yet implemented"] scope,
+        #[ignore = "VM not yet implemented: if"] empty,
+        scope,
     ]);
 }
 
@@ -382,26 +382,29 @@ mod this_ {
 
 mod variable {
     rlox::lox_tests!("variable", [
-        #[ignore = "VM not yet implemented"] collide_with_parameter,
-        #[ignore = "VM not yet implemented"] duplicate_local,
-        #[ignore = "VM not yet implemented"] duplicate_parameter,
-        #[ignore = "VM not yet implemented"] early_bound,
-        #[ignore = "VM not yet implemented"] in_middle_of_block,
-        #[ignore = "VM not yet implemented"] in_nested_block,
-        #[ignore = "VM not yet implemented"] local_from_method,
+        #[ignore = "VM not yet implemented: functions"] collide_with_parameter,
+        #[ignore = "lorax deviates: same-scope shadowing is legal"] duplicate_local,
+        #[ignore = "VM not yet implemented: functions"] duplicate_parameter,
+        #[ignore = "VM not yet implemented: functions"] early_bound,
+        in_middle_of_block,
+        in_nested_block,
+        #[ignore = "VM not yet implemented: classes"] local_from_method,
         redeclare_global,
         redefine_global,
-        #[ignore = "VM not yet implemented"] scope_reuse_in_different_blocks,
-        #[ignore = "VM not yet implemented"] shadow_and_local,
-        #[ignore = "VM not yet implemented"] shadow_global,
-        #[ignore = "VM not yet implemented"] shadow_local,
+        scope_reuse_in_different_blocks,
+        shadow_and_local,
+        shadow_global,
+        shadow_local,
+        // lorax-specific shadowing tests.
+        shadow_same_scope,
+        shadow_use_previous,
         undefined_global,
-        #[ignore = "VM not yet implemented"] undefined_local,
+        undefined_local,
         uninitialized,
-        #[ignore = "VM not yet implemented"] unreached_undefined,
+        #[ignore = "VM not yet implemented: if"] unreached_undefined,
         use_false_as_var,
         use_global_in_initializer,
-        #[ignore = "VM not yet implemented"] use_local_in_initializer,
+        #[ignore = "lorax deviates: initializer can reference previous binding"] use_local_in_initializer,
         use_nil_as_var,
         use_this_as_var,
     ]);

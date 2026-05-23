@@ -1,6 +1,7 @@
 use std::{fmt::Display, iter::Peekable};
 
-use anyhow::bail;
+use anyhow::{Context, bail};
+use lasso::Spur;
 use lexer::{
     Scanner,
     tokens::{Token, TokenType},
@@ -10,13 +11,15 @@ use report::{Span, error::LexingError};
 
 use crate::{
     chunk::Chunk,
-    compiler::error::CompileError,
-    opcode::OpCode,
+    compiler::{error::CompileError, scopes::Scopes},
+    object::internal_str::InternalStr,
+    opcode::{OpCode, Slot},
     storage::Storage,
     value::{Addr, Value},
 };
 
 pub mod error;
+pub mod scopes;
 
 // program          => declaration* EOF ;
 //
@@ -108,6 +111,12 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     })
 }
 
+/// Result of compiling a sub-expression.
+///
+/// `Value` means the result is already pushed on the stack. `Place` means
+/// compilation produced an addressable location that hasn't been read or
+/// written yet; the next step (read in `materialize` or assign in `store`)
+/// emits the appropriate get/set op.
 #[derive(Debug, Clone, Copy)]
 enum Handle {
     Value,
@@ -118,11 +127,16 @@ impl Handle {
     fn global(addr: Addr, line: u32) -> Self {
         Self::Place(Place::Global { addr, line })
     }
+
+    fn local(slot: Slot, line: u32) -> Self {
+        Self::Place(Place::Local { slot, line })
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Place {
     Global { addr: Addr, line: u32 },
+    Local { slot: Slot, line: u32 },
 }
 
 pub struct Compiler<'s, 't> {
@@ -131,7 +145,7 @@ pub struct Compiler<'s, 't> {
     chunk: Chunk,
     storage: &'t mut Storage,
     errored: bool,
-    scope_depth: u32,
+    scopes: Scopes,
 }
 
 impl<'s, 't> Compiler<'s, 't> {
@@ -142,7 +156,7 @@ impl<'s, 't> Compiler<'s, 't> {
             chunk: Chunk::default(),
             storage,
             errored: false,
-            scope_depth: 0,
+            scopes: Scopes::default(),
         }
     }
 
@@ -187,16 +201,47 @@ impl<'s, 't> Compiler<'s, 't> {
 
     fn var_decl(&mut self) -> Result<(), CompileError> {
         self.consume(TokenType::Var)?;
-        let (tok, global) = self.parse_variable()?;
+        let ident = self.consume_with(
+            |t| matches!(t, TokenType::Identifier(_)),
+            "variable identifier",
+        )?;
 
-        match self.advance_if(TokenType::Equal)? {
-            Some(_) => self.expression()?,
-            None => self.emit_op_and_line(tok.span.line_start, OpCode::Nil),
+        if self.scopes.is_global() {
+            self.global_var_decl(ident)
+        } else {
+            self.local_var_decl(ident)
         }
-        let tok = self.consume(TokenType::Semicolon)?;
+    }
 
-        self.define_variable(tok, global);
+    fn global_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
+        let name = self.ident_spur(&ident);
+        let addr = self.ident_constant(name);
+        self.var_initializer(&ident)?;
+        let semi = self.consume(TokenType::Semicolon)?;
+        self.emit_op_and_line(semi.span.line_start, OpCode::DefineGlobal(addr));
         Ok(())
+    }
+
+    fn local_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
+        let name = self.ident_spur(&ident);
+        self.var_initializer(&ident)?;
+        self.consume(TokenType::Semicolon)?;
+
+        // Declare AFTER the initializer is compiled so `var a = a + 1;`
+        // refers to the previously-bound `a` (rather than itself). This is
+        // a deliberate deviation from Lox spec — Rust-style shadowing.
+        self.scopes.declare(name).context("declaring local")?;
+        Ok(())
+    }
+
+    fn var_initializer(&mut self, ident: &Token) -> Result<(), CompileError> {
+        match self.advance_if(TokenType::Equal)? {
+            Some(_) => self.expression(),
+            None => {
+                self.emit_op_and_line(ident.span.line_start, OpCode::Nil);
+                Ok(())
+            }
+        }
     }
 
     fn statement(&mut self) -> Result<(), CompileError> {
@@ -354,7 +399,8 @@ impl<'s, 't> Compiler<'s, 't> {
         else {
             unreachable!("expected string token");
         };
-        let obj = self.storage.add_internal_str(&s);
+        let key = self.storage.intern(&s);
+        let obj = self.storage.add_obj(InternalStr::boxed(key));
         self.emit_constant_and_line(span.line_start, Value::object(obj));
         Ok(Handle::Value)
     }
@@ -371,8 +417,16 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
-        let addr = self.ident_constant(&tok);
-        Ok(Handle::global(addr, tok.span.line_start))
+        let name = self.ident_spur(&tok);
+        let line = tok.span.line_start;
+        // Locals win over globals (same name → most recent local). On miss,
+        // materialize the name as a chunk constant so the runtime can look
+        // it up in the globals table.
+        if let Some(slot) = self.scopes.resolve(name) {
+            return Ok(Handle::local(slot, line));
+        }
+        let addr = self.ident_constant(name);
+        Ok(Handle::global(addr, line))
     }
 
     fn binary(&mut self, op: Token, lhs: Handle) -> Result<Handle, CompileError> {
@@ -425,6 +479,9 @@ impl<'s, 't> Compiler<'s, 't> {
             Handle::Place(Place::Global { addr, line }) => {
                 self.emit_op_and_line(line, OpCode::GetGlobal(addr));
             }
+            Handle::Place(Place::Local { slot, line }) => {
+                self.emit_op_and_line(line, OpCode::GetLocal(slot));
+            }
         }
     }
 
@@ -433,33 +490,29 @@ impl<'s, 't> Compiler<'s, 't> {
             Place::Global { addr, line } => {
                 self.emit_op_and_line(line, OpCode::SetGlobal(addr));
             }
+            Place::Local { slot, line } => {
+                self.emit_op_and_line(line, OpCode::SetLocal(slot));
+            }
         }
     }
 
-    fn ident_constant(&mut self, tok: &Token) -> Addr {
-        let obj_ref = self.storage.add_internal_str(tok.as_str().as_ref());
-        self.chunk.add_constant(Value::object(obj_ref))
+    fn ident_spur(&mut self, tok: &Token) -> Spur {
+        self.storage.intern(tok.as_str().as_ref())
     }
 
-    fn parse_variable(&mut self) -> Result<(Token, Addr), CompileError> {
-        let ident = self.consume_with(
-            |t| matches!(t, TokenType::Identifier(_)),
-            "variable identifier",
-        )?;
-        let addr = self.ident_constant(&ident);
-        Ok((ident, addr))
-    }
-
-    fn define_variable(&mut self, semicolon: Token, addr: Addr) {
-        self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
+    fn ident_constant(&mut self, name: Spur) -> Addr {
+        let obj = self.storage.add_obj(InternalStr::boxed(name));
+        self.chunk.add_constant(Value::object(obj))
     }
 
     fn begin_scope(&mut self) {
-        self.scope_depth += 1;
+        self.scopes.enter();
     }
 
     fn end_scope(&mut self) {
-        self.scope_depth -= 1;
+        for _ in 0..self.scopes.exit() {
+            self.emit_op(OpCode::Pop);
+        }
     }
 
     fn emit_op(&mut self, op: OpCode) {
@@ -542,75 +595,90 @@ impl<'s, 't> Compiler<'s, 't> {
 mod tests {
     use super::*;
 
-    fn compile(src: &str) -> Chunk {
+    fn compile(src: &str) {
         let mut storage = Storage::new();
         Compiler::new(Scanner::new(src), Reporter::new(src), &mut storage)
             .compile()
-            .unwrap()
+            .unwrap_or_else(|_| panic!("failed to compile `{src}`"));
     }
 
     #[test]
     fn challenge() {
-        let _program = compile("(-1 + 2) * 3 - -4;");
+        compile("(-1 + 2) * 3 - -4;");
     }
 
     #[test]
     fn arithmetic() {
-        let _program = compile("2 * 3 + 4;");
+        compile("2 * 3 + 4;");
     }
 
     #[test]
     fn prefix() {
-        let _program = compile("-2 * 3 + 4;");
+        compile("-2 * 3 + 4;");
     }
 
     #[test]
     fn grouping() {
-        let _program = compile("2 * (3 + 4);");
+        compile("2 * (3 + 4);");
     }
 
     #[test]
     fn logical() {
-        let _program = compile("!(5 - 4 > 3 * 2 == !nil);");
+        compile("!(5 - 4 > 3 * 2 == !nil);");
     }
 
     #[test]
     fn string_literal() {
-        let _program = compile("\"hello\";");
+        compile("\"hello\";");
     }
 
     #[test]
     fn string_ops() {
-        let _program = compile("\"a\" + \"b\" == \"ab\";");
+        compile("\"a\" + \"b\" == \"ab\";");
     }
 
     #[test]
     fn var_declaration() {
-        let _program = compile("var a = 1 + 2; print a;");
+        compile("var a = 1 + 2; print a;");
     }
 
     #[test]
     fn var_assignment() {
-        let _program = compile("var a = 1 + 2; a = 0;");
+        compile("var a = 1 + 2; a = 0;");
     }
 
     #[test]
     fn block_empty() {
-        let _program = compile("{}");
+        compile("{}");
     }
 
     #[test]
     fn block_with_stmt() {
-        let _program = compile("{ print 1; }");
+        compile("{ print 1; }");
     }
 
     #[test]
     fn block_nested() {
-        let _program = compile("{ { print 1; } }");
+        compile("{ { print 1; } }");
     }
 
     #[test]
-    fn block_with_global_var() {
-        let _program = compile("{ var a = 1; print a; }");
+    fn block_with_local_var() {
+        compile("{ var a = 1; print a; }");
+    }
+
+    #[test]
+    fn local_shadow_same_scope() {
+        compile("{ var a = 1; var a = 2; print a; }");
+    }
+
+    #[test]
+    fn local_shadow_uses_previous() {
+        compile("{ var a = 1; var a = a + 1; print a; }");
+    }
+
+    #[test]
+    fn nested_block_shadow() {
+        compile("{ var a = 1; { var a = a + 1; print a; } print a; }");
     }
 }

@@ -1,8 +1,16 @@
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
 use lasso::{Rodeo, Spur};
 
-use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject, internal_str::InternalStr};
+use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject};
 
+/// Owns the runtime heap (object pool) and the string interner.
+///
+/// Two services, kept separate at the call site:
+/// - [`Self::intern`] / [`Self::resolve`] for `&str` ↔ [`Spur`] (no alloc).
+/// - [`Self::add_obj`] to put a heap [`Object`] under pool ownership.
+///
+/// Callers that need both — e.g. compiling a string literal — chain them
+/// explicitly: `storage.add_obj(InternalStr::boxed(storage.intern(s)))`.
 #[derive(Default)]
 pub struct Storage {
     heap: ObjectPool,
@@ -14,17 +22,16 @@ impl Storage {
         Self::default()
     }
 
+    pub fn intern(&mut self, s: &str) -> Spur {
+        self.strings.get_or_intern(s)
+    }
+
+    pub fn resolve(&self, key: Spur) -> &str {
+        self.strings.resolve(&key)
+    }
+
     pub fn add_obj<T: ObjectKind + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
         self.heap.add(obj)
-    }
-
-    pub fn add_internal_str(&mut self, s: &str) -> UnsafeRef<Object> {
-        let internal_str = Box::new(InternalStr::new(&mut self.strings, s));
-        self.heap.add(internal_str)
-    }
-
-    pub fn resolve_internal_str(&self, key: &Spur) -> &str {
-        self.strings.resolve(key)
     }
 }
 

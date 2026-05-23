@@ -33,7 +33,11 @@ pub enum OpCode {
     DefineGlobal(Addr) = 0x11,
     GetGlobal(Addr) = 0x12,
     SetGlobal(Addr) = 0x13,
+    GetLocal(Slot) = 0x14,
+    SetLocal(Slot) = 0x15,
 }
+
+pub type Slot = u8;
 
 impl Decode for OpCode {
     type Err = OpDecodeError;
@@ -61,7 +65,11 @@ impl Decode for OpCode {
             (0x11, 2..) => Ok((OpCode::DefineGlobal(buf[1]), 2)),
             (0x12, 2..) => Ok((OpCode::GetGlobal(buf[1]), 2)),
             (0x13, 2..) => Ok((OpCode::SetGlobal(buf[1]), 2)),
-            (0x02 | 0x11 | 0x12 | 0x13, few) => Err(OpDecodeError::insufficient(2, few)),
+            (0x14, 2..) => Ok((OpCode::GetLocal(buf[1]), 2)),
+            (0x15, 2..) => Ok((OpCode::SetLocal(buf[1]), 2)),
+            (0x02 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15, few) => {
+                Err(OpDecodeError::insufficient(2, few))
+            }
             (unknown, _) => Err(OpDecodeError::unknown(unknown)),
         }
     }
@@ -94,6 +102,8 @@ impl Encode for OpCode {
             OpCode::DefineGlobal(addr) => write(&[0x11, *addr]),
             OpCode::GetGlobal(addr) => write(&[0x12, *addr]),
             OpCode::SetGlobal(addr) => write(&[0x13, *addr]),
+            OpCode::GetLocal(slot) => write(&[0x14, *slot]),
+            OpCode::SetLocal(slot) => write(&[0x15, *slot]),
         }
     }
 }

@@ -1,10 +1,23 @@
 use std::slice;
 
-use crate::value::Value;
+use crate::{opcode::Slot, value::Value};
 
-#[derive(Default)]
+// PERF: all accessors (`top`, `top_mut`, `peek`, `peek_mut`, `get`, `get_mut`,
+// `pop`) bounds-check on every dispatch. The compiler guarantees the indices
+// are in range, so a `debug_assert!` + `get_unchecked` pair could shave the
+// check from the inner loop once benchmarks justify it.
 pub struct Stack {
     inner: Vec<Value>,
+}
+
+impl Default for Stack {
+    fn default() -> Self {
+        // Avoid early-push reallocs. 256 matches the local-slot space; once
+        // call frames land, pick a bigger default scaled to frame budget.
+        Self {
+            inner: Vec::with_capacity(256),
+        }
+    }
 }
 
 impl Stack {
@@ -46,6 +59,22 @@ impl Stack {
         self.inner
             .get_mut(len - distance - 1)
             .expect("compiler bug, nothing to peek on the VM stack")
+    }
+
+    /// Absolute-slot read. Used by `OP_GET_LOCAL` — local slot `n` lives at
+    /// stack index `n` (no call frames yet; when frames land this becomes
+    /// `frame.base + n`).
+    pub fn get(&self, slot: Slot) -> &Value {
+        self.inner
+            .get(slot as usize)
+            .expect("compiler bug, local slot out of range")
+    }
+
+    /// Absolute-slot mutable access. Used by `OP_SET_LOCAL`.
+    pub fn get_mut(&mut self, slot: Slot) -> &mut Value {
+        self.inner
+            .get_mut(slot as usize)
+            .expect("compiler bug, local slot out of range")
     }
 
     pub fn iter(&self) -> slice::Iter<'_, Value> {

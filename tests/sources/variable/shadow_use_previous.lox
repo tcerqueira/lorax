@@ -1,0 +1,21 @@
+// lorax-specific: a `var` initializer can use the previous binding of the
+// same name (Lox spec forbids `var a = a;`). Same-scope and nested-scope cases.
+{
+  var a = 1;
+  var a = a + 1;
+  print a; // expect: 2
+  var a = a * 10;
+  print a; // expect: 20
+}
+
+var b = 5;
+{
+  var b = b + 1;
+  print b; // expect: 6
+  {
+    var b = b * 2;
+    print b; // expect: 12
+  }
+  print b; // expect: 6
+}
+print b; // expect: 5

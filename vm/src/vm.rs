@@ -133,6 +133,16 @@ impl VirtualMachine {
                         }
                     })?;
                 }
+                OpCode::GetLocal(slot) => {
+                    let v = self.stack.get(slot).clone();
+                    self.stack.push(v);
+                }
+                OpCode::SetLocal(slot) => {
+                    // Assignment is an expression — leave the value on top so
+                    // chained uses like `print a = 1;` work.
+                    let v = self.stack.top().clone();
+                    *self.stack.get_mut(slot) = v;
+                }
             }
         }
         Ok(())

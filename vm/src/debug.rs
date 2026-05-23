@@ -6,7 +6,7 @@ use report::Span;
 
 use crate::chunk::Chunk;
 use crate::enconding::OpDecoder;
-use crate::opcode::OpCode;
+use crate::opcode::{OpCode, Slot};
 use crate::value::Addr;
 
 pub struct LineInfo {
@@ -86,14 +86,17 @@ impl<'a, 'f> Disassembler<'a, 'f> {
 
 impl OpCode {
     pub fn disassemble(&self, f: &mut fmt::Formatter<'_>, chunk: &Chunk) -> fmt::Result {
-        let mut write_1 = |verb: &'static str, addr: &Addr| {
+        let write_addr = |f: &mut fmt::Formatter<'_>, verb: &'static str, addr: &Addr| {
             let constant = &chunk.constants[*addr as usize];
             write!(f, "{:<16} {:<4}[{addr:<03}]", verb, constant)
+        };
+        let write_slot = |f: &mut fmt::Formatter<'_>, verb: &'static str, slot: &Slot| {
+            write!(f, "{:<16} [{slot:<03}]", verb)
         };
         match self {
             OpCode::NoOp => write!(f, "NOOP"),
             OpCode::Return => write!(f, "OP_RETURN"),
-            OpCode::Constant(addr) => write_1("OP_CONSTANT", addr),
+            OpCode::Constant(addr) => write_addr(f, "OP_CONSTANT", addr),
             OpCode::Neg => write!(f, "OP_NEG"),
             OpCode::Add => write!(f, "OP_ADD"),
             OpCode::Sub => write!(f, "OP_SUB"),
@@ -108,9 +111,11 @@ impl OpCode {
             OpCode::Less => write!(f, "OP_LESS"),
             OpCode::Print => write!(f, "OP_PRINT"),
             OpCode::Pop => write!(f, "OP_POP"),
-            OpCode::DefineGlobal(addr) => write_1("OP_DEFINE_GLOBAL", addr),
-            OpCode::GetGlobal(addr) => write_1("OP_GET_GLOBAL", addr),
-            OpCode::SetGlobal(addr) => write_1("OP_SET_GLOBAL", addr),
+            OpCode::DefineGlobal(addr) => write_addr(f, "OP_DEFINE_GLOBAL", addr),
+            OpCode::GetGlobal(addr) => write_addr(f, "OP_GET_GLOBAL", addr),
+            OpCode::SetGlobal(addr) => write_addr(f, "OP_SET_GLOBAL", addr),
+            OpCode::GetLocal(slot) => write_slot(f, "OP_GET_LOCAL", slot),
+            OpCode::SetLocal(slot) => write_slot(f, "OP_SET_LOCAL", slot),
         }
     }
 }

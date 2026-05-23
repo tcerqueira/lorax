@@ -1,0 +1,9 @@
+// lorax-specific: same-scope shadowing is allowed (Lox spec forbids it).
+{
+  var a = "first";
+  print a; // expect: first
+  var a = "second";
+  print a; // expect: second
+  var a = "third";
+  print a; // expect: third
+}
