@@ -6,7 +6,7 @@ use report::Span;
 
 use crate::chunk::Chunk;
 use crate::enconding::OpDecoder;
-use crate::opcode::{OpCode, Slot};
+use crate::opcode::OpCode;
 use crate::value::Addr;
 
 pub struct LineInfo {
@@ -90,8 +90,8 @@ impl OpCode {
             let constant = &chunk.constants[*addr as usize];
             write!(f, "{:<16} {:<4}[{addr:<03}]", verb, constant)
         };
-        let write_slot = |f: &mut fmt::Formatter<'_>, verb: &'static str, slot: &Slot| {
-            write!(f, "{:<16} [{slot:<03}]", verb)
+        let write_args1 = |f: &mut fmt::Formatter<'_>, verb: &'static str, arg: &u8| {
+            write!(f, "{:<16} [{arg:<03}]", verb)
         };
         match self {
             OpCode::NoOp => write!(f, "NOOP"),
@@ -114,8 +114,9 @@ impl OpCode {
             OpCode::DefineGlobal(addr) => write_addr(f, "OP_DEFINE_GLOBAL", addr),
             OpCode::GetGlobal(addr) => write_addr(f, "OP_GET_GLOBAL", addr),
             OpCode::SetGlobal(addr) => write_addr(f, "OP_SET_GLOBAL", addr),
-            OpCode::GetLocal(slot) => write_slot(f, "OP_GET_LOCAL", slot),
-            OpCode::SetLocal(slot) => write_slot(f, "OP_SET_LOCAL", slot),
+            OpCode::GetLocal(slot) => write_args1(f, "OP_GET_LOCAL", slot),
+            OpCode::SetLocal(slot) => write_args1(f, "OP_SET_LOCAL", slot),
+            OpCode::PopN(n) => write_args1(f, "OP_POPN", n),
         }
     }
 }

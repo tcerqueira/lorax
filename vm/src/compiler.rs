@@ -510,8 +510,19 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn end_scope(&mut self) {
-        for _ in 0..self.scopes.exit() {
-            self.emit_op(OpCode::Pop);
+        let pop_count = self.scopes.exit();
+        self.emit_pops(pop_count);
+    }
+
+    /// Emit instructions to drop `count` values from the runtime stack. Uses
+    /// `Pop` for a single value (1 byte) and `PopN` otherwise (2 bytes).
+    /// `Scopes` caps live locals at `u8::MAX`, so the count always fits.
+    fn emit_pops(&mut self, count: usize) {
+        debug_assert!(count <= u8::MAX as usize, "Scopes caps locals at u8::MAX");
+        match count {
+            0 => {}
+            1 => self.emit_op(OpCode::Pop),
+            n => self.emit_op(OpCode::PopN(n as u8)),
         }
     }
 

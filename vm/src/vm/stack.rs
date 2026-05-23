@@ -31,6 +31,16 @@ impl Stack {
             .expect("compiler bug, nothing to pop on the VM stack")
     }
 
+    /// Drop the top `n` values in one length-write. Used by `OP_POPN`.
+    pub fn pop_n(&mut self, n: u8) {
+        let new_len = self
+            .inner
+            .len()
+            .checked_sub(n as usize)
+            .expect("compiler bug, popping more values than stack holds");
+        self.inner.truncate(new_len);
+    }
+
     pub fn top(&self) -> &Value {
         // optimization for ops that pop 1 value and push 1 value
         // allows mutation in place

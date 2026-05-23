@@ -108,6 +108,7 @@ impl VirtualMachine {
                     };
                 }
                 OpCode::Pop => _ = self.stack.pop(),
+                OpCode::PopN(n) => self.stack.pop_n(n),
                 OpCode::DefineGlobal(addr) => {
                     self.with_variable(&chunk, addr, |vm, key, value| {
                         vm.globals.insert(key, value);

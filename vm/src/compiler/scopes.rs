@@ -3,8 +3,9 @@ use thiserror::Error;
 
 use crate::opcode::Slot;
 
-/// Maximum number of locals live at once. Bounded by `Slot` (a `u8`), so 256.
-const MAX_LOCALS: usize = u8::MAX as usize + 1;
+/// Maximum number of locals live at once. Capped at `u8::MAX` to match the
+/// chunk-constant limit and let any scope's pop count fit in a single `PopN`.
+const MAX_LOCALS: usize = u8::MAX as usize;
 
 #[derive(Debug, Clone, Copy)]
 struct Local {

@@ -35,6 +35,7 @@ pub enum OpCode {
     SetGlobal(Addr) = 0x13,
     GetLocal(Slot) = 0x14,
     SetLocal(Slot) = 0x15,
+    PopN(u8) = 0x16,
 }
 
 pub type Slot = u8;
@@ -67,7 +68,8 @@ impl Decode for OpCode {
             (0x13, 2..) => Ok((OpCode::SetGlobal(buf[1]), 2)),
             (0x14, 2..) => Ok((OpCode::GetLocal(buf[1]), 2)),
             (0x15, 2..) => Ok((OpCode::SetLocal(buf[1]), 2)),
-            (0x02 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15, few) => {
+            (0x16, 2..) => Ok((OpCode::PopN(buf[1]), 2)),
+            (0x02 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16, few) => {
                 Err(OpDecodeError::insufficient(2, few))
             }
             (unknown, _) => Err(OpDecodeError::unknown(unknown)),
@@ -104,6 +106,7 @@ impl Encode for OpCode {
             OpCode::SetGlobal(addr) => write(&[0x13, *addr]),
             OpCode::GetLocal(slot) => write(&[0x14, *slot]),
             OpCode::SetLocal(slot) => write(&[0x15, *slot]),
+            OpCode::PopN(n) => write(&[0x16, *n]),
         }
     }
 }
