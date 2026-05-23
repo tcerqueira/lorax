@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map::Entry},
     io::{Cursor, Seek},
     mem::{self, transmute},
     ops::{Add, Div, Mul, Sub},
@@ -43,16 +43,21 @@ impl VirtualMachine {
         }
     }
 
+    #[warn(clippy::unit_arg)]
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
         let mut pc = Cursor::new(chunk.code.as_slice());
         while let Some(op) = pc.decode_op::<OpCode>()? {
             self.trace(op);
 
-            let invalid_operand_err = |_: ValueError| {
-                let span = chunk
+            let mut make_span = || {
+                chunk
                     .get_line(pc.stream_position().unwrap() - 1)
                     .map(LineInfo::to_span)
-                    .unwrap_or_default();
+                    .unwrap_or_default()
+            };
+
+            let invalid_operand_err = |_: ValueError| {
+                let span = make_span();
                 RuntimeError::custom(span, "invalid operand")
             };
 
@@ -108,10 +113,9 @@ impl VirtualMachine {
                 }
                 OpCode::Pop => _ = self.stack_pop(),
                 OpCode::DefineGlobal(addr) => {
-                    // Keep the value on the stack as a GC root until after the insert returns
-                    let key = self.variable_name(&chunk, addr).key;
-                    let value = self.stack_peek(0).clone();
-                    self.globals.insert(key, value);
+                    self.with_variable(&chunk, addr, |vm, key, value| {
+                        vm.globals.insert(key, value);
+                    });
                     self.stack_pop();
                 }
                 OpCode::GetGlobal(addr) => {
@@ -121,21 +125,20 @@ impl VirtualMachine {
                             let value = value.clone();
                             self.stack_push(value);
                         }
-                        None => {
-                            let name = self.storage.resolve_internal_str(&key);
-                            let span = chunk
-                                .get_line(pc.stream_position().unwrap() - 1)
-                                .map(LineInfo::to_span)
-                                .unwrap_or_default();
-                            return Err(RuntimeError::custom(
-                                span,
-                                format!("Undefined variable '{name}'"),
-                            )
-                            .into());
-                        }
+                        None => return Err(RuntimeError::undefined(make_span()).into()),
                     }
                 }
-                OpCode::SetGlobal(_) => todo!(),
+                OpCode::SetGlobal(addr) => {
+                    self.with_variable(&chunk, addr, |vm, key, value| {
+                        match vm.globals.entry(key) {
+                            Entry::Occupied(mut e) => {
+                                *e.get_mut() = value;
+                                Ok(())
+                            }
+                            Entry::Vacant(_) => Err(RuntimeError::undefined(make_span())),
+                        }
+                    })?;
+                }
             }
         }
         Ok(())
@@ -143,6 +146,19 @@ impl VirtualMachine {
 
     pub fn storage(&mut self) -> &mut Storage {
         &mut self.storage
+    }
+
+    fn with_variable<T>(
+        &mut self,
+        chunk: &Chunk,
+        addr: Addr,
+        f: impl FnOnce(&mut VirtualMachine, Spur, Value) -> T,
+    ) -> T {
+        // Value stays on the stack across `f` so it remains a GC root if a
+        // future collector triggers during a globals rehash.
+        let key = self.variable_name(chunk, addr).key;
+        let value = self.stack_peek(0).clone();
+        f(self, key, value)
     }
 
     fn binary_op<F>(&mut self, op: F) -> Result<(), ValueError>

@@ -1,7 +1,6 @@
 use std::{fmt::Display, iter::Peekable};
 
 use anyhow::bail;
-use lasso::Spur;
 use lexer::{
     Scanner,
     tokens::{Token, TokenType},
@@ -113,7 +112,7 @@ fn postfix_bp(_tok: &TokenType) -> Option<u8> {
 
 fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     Some(match tok {
-        // TokenType::Equal => (2, 1),
+        TokenType::Equal => (2, 1),
         // TokenType::Or => (3, 4),
         // TokenType::And => (5, 6),
         TokenType::EqualEqual | TokenType::BangEqual => (7, 8),
@@ -127,17 +126,21 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     })
 }
 
-#[expect(unused)]
 #[derive(Debug, Clone, Copy)]
 enum Handle {
     Value,
     Place(Place),
 }
 
-#[expect(unused)]
+impl Handle {
+    fn global(addr: Addr, line: u32) -> Self {
+        Self::Place(Place::Global { addr, line })
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum Place {
-    Global { name: Spur, line: u32 },
+    Global { addr: Addr, line: u32 },
 }
 
 pub struct Compiler<'s, 't> {
@@ -227,6 +230,7 @@ impl<'s, 't> Compiler<'s, 't> {
             | TokenType::GreaterEqual
             | TokenType::Less
             | TokenType::LessEqual => self.binary(tok, lhs),
+            TokenType::Equal => self.assignment(tok, lhs),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
@@ -256,14 +260,23 @@ impl<'s, 't> Compiler<'s, 't> {
 
     fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let addr = self.ident_constant(&tok);
-        self.emit_op_and_line(tok.span.line_start, OpCode::GetGlobal(addr));
-        Ok(Handle::Value)
+        Ok(Handle::global(addr, tok.span.line_start))
     }
 
     fn materialize(&mut self, handle: Handle) {
         match handle {
             Handle::Value => {}
-            Handle::Place(_global @ Place::Global { .. }) => todo!("emit op set global"),
+            Handle::Place(Place::Global { addr, line }) => {
+                self.emit_op_and_line(line, OpCode::GetGlobal(addr));
+            }
+        }
+    }
+
+    fn store(&mut self, place: Place) {
+        match place {
+            Place::Global { addr, line } => {
+                self.emit_op_and_line(line, OpCode::SetGlobal(addr));
+            }
         }
     }
 
@@ -408,6 +421,17 @@ impl<'s, 't> Compiler<'s, 't> {
         Ok(Handle::Value)
     }
 
+    fn assignment(&mut self, equal: Token, lhs: Handle) -> Result<Handle, CompileError> {
+        let Handle::Place(place) = lhs else {
+            return Err(ParsingError::expected(&equal, "lvalue", "rvalue").into());
+        };
+        let (_, r_bp) = infix_bp(equal.ty()).expect("=");
+        let rhs = self.parse_bp(r_bp)?;
+        self.materialize(rhs);
+        self.store(place);
+        Ok(Handle::Value)
+    }
+
     fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let line = tok.span.line_start;
         match tok.ty() {
@@ -547,5 +571,15 @@ mod tests {
     #[test]
     fn string_ops() {
         let _program = compile("\"a\" + \"b\" == \"ab\";");
+    }
+
+    #[test]
+    fn var_declaration() {
+        let _program = compile("var a = 1 + 2; print a;");
+    }
+
+    #[test]
+    fn var_assignment() {
+        let _program = compile("var a = 1 + 2; a = 0;");
     }
 }
