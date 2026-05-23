@@ -131,6 +131,7 @@ pub struct Compiler<'s, 't> {
     chunk: Chunk,
     storage: &'t mut Storage,
     errored: bool,
+    scope_depth: u32,
 }
 
 impl<'s, 't> Compiler<'s, 't> {
@@ -141,6 +142,7 @@ impl<'s, 't> Compiler<'s, 't> {
             chunk: Chunk::default(),
             storage,
             errored: false,
+            scope_depth: 0,
         }
     }
 
@@ -203,6 +205,7 @@ impl<'s, 't> Compiler<'s, 't> {
         };
         match tok.ty() {
             TokenType::Print => self.print_stmt(),
+            TokenType::LeftBrace => self.block_stmt(),
             _ => self.expression_stmt(),
         }
     }
@@ -214,6 +217,25 @@ impl<'s, 't> Compiler<'s, 't> {
         self.expression()?;
         self.consume(TokenType::Semicolon)?;
         self.emit_op_and_line(tok.span.line_start, OpCode::Print);
+        Ok(())
+    }
+
+    fn block_stmt(&mut self) -> Result<(), CompileError> {
+        self.consume(TokenType::LeftBrace)
+            .expect("matched left brace before entering this branch");
+        self.begin_scope();
+        self.block()?;
+        self.end_scope();
+        Ok(())
+    }
+
+    fn block(&mut self) -> Result<(), CompileError> {
+        while let Some(tok) = self.peek()?
+            && tok.ty != TokenType::RightBrace
+        {
+            self.declaration()?;
+        }
+        self.consume(TokenType::RightBrace)?;
         Ok(())
     }
 
@@ -254,7 +276,6 @@ impl<'s, 't> Compiler<'s, 't> {
                 _ => break,
             };
         }
-
         Ok(handle)
     }
 
@@ -433,6 +454,14 @@ impl<'s, 't> Compiler<'s, 't> {
         self.emit_op_and_line(semicolon.span.line_start, OpCode::DefineGlobal(addr));
     }
 
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+    }
+
     fn emit_op(&mut self, op: OpCode) {
         self.chunk.write(op);
     }
@@ -563,5 +592,25 @@ mod tests {
     #[test]
     fn var_assignment() {
         let _program = compile("var a = 1 + 2; a = 0;");
+    }
+
+    #[test]
+    fn block_empty() {
+        let _program = compile("{}");
+    }
+
+    #[test]
+    fn block_with_stmt() {
+        let _program = compile("{ print 1; }");
+    }
+
+    #[test]
+    fn block_nested() {
+        let _program = compile("{ { print 1; } }");
+    }
+
+    #[test]
+    fn block_with_global_var() {
+        let _program = compile("{ var a = 1; print a; }");
     }
 }

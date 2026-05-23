@@ -1,34 +1,10 @@
 const BACKEND: rlox::test_utils::Backend = rlox::test_utils::Backend::Vm;
 
-// Shadow lox_tests! to blanket-ignore all VM tests since the VM compiler is not yet implemented.
-macro_rules! lox_tests {
-    ($category:literal, [$($(#[$attr:meta])* $name:ident),* $(,)?]) => {
-        $(
-            #[test]
-            #[ignore = "VM not yet implemented"]
-            fn $name() {
-                rlox::test_utils::run_test(
-                    env!("CARGO_BIN_EXE_rlox"),
-                    super::BACKEND,
-                    concat!("tests/sources/", $category, "/", stringify!($name), ".lox"),
-                );
-            }
-        )*
-    };
-    ([$($(#[$attr:meta])* $name:ident),* $(,)?]) => {
-        $(
-            #[test]
-            #[ignore = "VM not yet implemented"]
-            fn $name() {
-                rlox::test_utils::run_test(
-                    env!("CARGO_BIN_EXE_rlox"),
-                    super::BACKEND,
-                    concat!("tests/sources/", stringify!($name), ".lox"),
-                );
-            }
-        )*
-    };
-}
+// Tests are marked `#[ignore = "VM not yet implemented"]` when they exercise a
+// feature the VM doesn't support yet (locals, control flow, functions, classes,
+// closures, etc.) — even if they currently happen to pass (e.g. because the
+// test runner only checks that *some* error occurred, not that the right one
+// did). Un-ignore as each feature lands.
 
 #[test]
 #[ignore = "VM not yet implemented"]
@@ -37,75 +13,75 @@ fn examples() {
 }
 
 mod assignment {
-    lox_tests!("assignment", [
+    rlox::lox_tests!("assignment", [
         associativity,
         global,
         grouping,
         infix_operator,
-        local,
+        #[ignore = "VM not yet implemented"] local,
         prefix_operator,
         syntax,
-        to_this,
+        #[ignore = "VM not yet implemented"] to_this,
         undefined,
     ]);
 }
 
 mod block {
-    lox_tests!("block", [
-        empty,
-        scope,
+    rlox::lox_tests!("block", [
+        #[ignore = "VM not yet implemented"] empty,
+        #[ignore = "VM not yet implemented"] scope,
     ]);
 }
 
 mod bool_ {
-    lox_tests!("bool", [
+    rlox::lox_tests!("bool", [
         equality,
         not,
     ]);
 }
 
 mod call {
-    lox_tests!("call", [
-        bool,
-        nil,
-        num,
-        object,
-        string,
+    rlox::lox_tests!("call", [
+        #[ignore = "VM not yet implemented"] bool,
+        #[ignore = "VM not yet implemented"] nil,
+        #[ignore = "VM not yet implemented"] num,
+        #[ignore = "VM not yet implemented"] object,
+        #[ignore = "VM not yet implemented"] string,
     ]);
 }
 
 mod class {
-    lox_tests!("class", [
-        empty,
-        inherit_self,
-        inherited_method,
-        local_inherit_other,
-        local_inherit_self,
-        local_reference_self,
-        reference_self,
+    rlox::lox_tests!("class", [
+        #[ignore = "VM not yet implemented"] empty,
+        #[ignore = "VM not yet implemented"] inherit_self,
+        #[ignore = "VM not yet implemented"] inherited_method,
+        #[ignore = "VM not yet implemented"] local_inherit_other,
+        #[ignore = "VM not yet implemented"] local_inherit_self,
+        #[ignore = "VM not yet implemented"] local_reference_self,
+        #[ignore = "VM not yet implemented"] reference_self,
     ]);
 }
 
 mod closure {
-    lox_tests!("closure", [
-        assign_to_closure,
-        assign_to_shadowed_later,
-        close_over_function_parameter,
-        close_over_later_variable,
-        close_over_method_parameter,
-        closed_closure_in_function,
-        nested_closure,
-        open_closure_in_function,
-        reference_closure_multiple_times,
-        reuse_closure_slot,
-        shadow_closure_with_local,
-        unused_closure,
-        unused_later_closure,
+    rlox::lox_tests!("closure", [
+        #[ignore = "VM not yet implemented"] assign_to_closure,
+        #[ignore = "VM not yet implemented"] assign_to_shadowed_later,
+        #[ignore = "VM not yet implemented"] close_over_function_parameter,
+        #[ignore = "VM not yet implemented"] close_over_later_variable,
+        #[ignore = "VM not yet implemented"] close_over_method_parameter,
+        #[ignore = "VM not yet implemented"] closed_closure_in_function,
+        #[ignore = "VM not yet implemented"] nested_closure,
+        #[ignore = "VM not yet implemented"] open_closure_in_function,
+        #[ignore = "VM not yet implemented"] reference_closure_multiple_times,
+        #[ignore = "VM not yet implemented"] reuse_closure_slot,
+        #[ignore = "VM not yet implemented"] shadow_closure_with_local,
+        #[ignore = "VM not yet implemented"] unused_closure,
+        #[ignore = "VM not yet implemented"] unused_later_closure,
     ]);
 }
 
 mod comments {
-    lox_tests!("comments", [
+    rlox::lox_tests!("comments", [
         line_at_eof,
         only_line_comment,
         only_line_comment_and_line,
@@ -114,162 +90,162 @@ mod comments {
 }
 
 mod constructor {
-    lox_tests!("constructor", [
-        arguments,
-        call_init_early_return,
-        call_init_explicitly,
-        default,
-        default_arguments,
-        early_return,
-        extra_arguments,
-        init_not_method,
-        missing_arguments,
-        return_in_nested_function,
-        return_value,
+    rlox::lox_tests!("constructor", [
+        #[ignore = "VM not yet implemented"] arguments,
+        #[ignore = "VM not yet implemented"] call_init_early_return,
+        #[ignore = "VM not yet implemented"] call_init_explicitly,
+        #[ignore = "VM not yet implemented"] default,
+        #[ignore = "VM not yet implemented"] default_arguments,
+        #[ignore = "VM not yet implemented"] early_return,
+        #[ignore = "VM not yet implemented"] extra_arguments,
+        #[ignore = "VM not yet implemented"] init_not_method,
+        #[ignore = "VM not yet implemented"] missing_arguments,
+        #[ignore = "VM not yet implemented"] return_in_nested_function,
+        #[ignore = "VM not yet implemented"] return_value,
     ]);
 }
 
 mod expressions {
-    lox_tests!("expressions", [
+    rlox::lox_tests!("expressions", [
         evaluate,
-        parse,
+        #[ignore = "VM not yet implemented"] parse,
     ]);
 }
 
 mod root {
-    lox_tests!([empty_file, precedence, unexpected_character]);
+    rlox::lox_tests!([empty_file, precedence, unexpected_character]);
 }
 
 mod field {
-    lox_tests!("field", [
-        call_function_field,
-        call_nonfunction_field,
-        get_and_set_method,
-        get_on_bool,
-        get_on_class,
-        get_on_function,
-        get_on_nil,
-        get_on_num,
-        get_on_string,
-        many,
-        method,
-        method_binds_this,
-        on_instance,
-        set_evaluation_order,
-        set_on_bool,
-        set_on_class,
-        set_on_function,
-        set_on_nil,
-        set_on_num,
-        set_on_string,
-        undefined,
+    rlox::lox_tests!("field", [
+        #[ignore = "VM not yet implemented"] call_function_field,
+        #[ignore = "VM not yet implemented"] call_nonfunction_field,
+        #[ignore = "VM not yet implemented"] get_and_set_method,
+        #[ignore = "VM not yet implemented"] get_on_bool,
+        #[ignore = "VM not yet implemented"] get_on_class,
+        #[ignore = "VM not yet implemented"] get_on_function,
+        #[ignore = "VM not yet implemented"] get_on_nil,
+        #[ignore = "VM not yet implemented"] get_on_num,
+        #[ignore = "VM not yet implemented"] get_on_string,
+        #[ignore = "VM not yet implemented"] many,
+        #[ignore = "VM not yet implemented"] method,
+        #[ignore = "VM not yet implemented"] method_binds_this,
+        #[ignore = "VM not yet implemented"] on_instance,
+        #[ignore = "VM not yet implemented"] set_evaluation_order,
+        #[ignore = "VM not yet implemented"] set_on_bool,
+        #[ignore = "VM not yet implemented"] set_on_class,
+        #[ignore = "VM not yet implemented"] set_on_function,
+        #[ignore = "VM not yet implemented"] set_on_nil,
+        #[ignore = "VM not yet implemented"] set_on_num,
+        #[ignore = "VM not yet implemented"] set_on_string,
+        #[ignore = "VM not yet implemented"] undefined,
     ]);
 }
 
 mod for_loop {
-    lox_tests!("for", [
-        class_in_body,
-        closure_in_body,
-        fun_in_body,
-        return_closure,
-        return_inside,
-        scope,
-        statement_condition,
-        statement_increment,
-        statement_initializer,
-        syntax,
-        var_in_body,
+    rlox::lox_tests!("for", [
+        #[ignore = "VM not yet implemented"] class_in_body,
+        #[ignore = "VM not yet implemented"] closure_in_body,
+        #[ignore = "VM not yet implemented"] fun_in_body,
+        #[ignore = "VM not yet implemented"] return_closure,
+        #[ignore = "VM not yet implemented"] return_inside,
+        #[ignore = "VM not yet implemented"] scope,
+        #[ignore = "VM not yet implemented"] statement_condition,
+        #[ignore = "VM not yet implemented"] statement_increment,
+        #[ignore = "VM not yet implemented"] statement_initializer,
+        #[ignore = "VM not yet implemented"] syntax,
+        #[ignore = "VM not yet implemented"] var_in_body,
     ]);
 }
 
 mod function {
-    lox_tests!("function", [
-        body_must_be_block,
-        empty_body,
-        extra_arguments,
-        local_mutual_recursion,
-        local_recursion,
-        missing_arguments,
-        missing_comma_in_parameters,
-        mutual_recursion,
-        nested_call_with_arguments,
-        parameters,
-        print,
-        recursion,
-        too_many_arguments,
-        too_many_parameters,
+    rlox::lox_tests!("function", [
+        #[ignore = "VM not yet implemented"] body_must_be_block,
+        #[ignore = "VM not yet implemented"] empty_body,
+        #[ignore = "VM not yet implemented"] extra_arguments,
+        #[ignore = "VM not yet implemented"] local_mutual_recursion,
+        #[ignore = "VM not yet implemented"] local_recursion,
+        #[ignore = "VM not yet implemented"] missing_arguments,
+        #[ignore = "VM not yet implemented"] missing_comma_in_parameters,
+        #[ignore = "VM not yet implemented"] mutual_recursion,
+        #[ignore = "VM not yet implemented"] nested_call_with_arguments,
+        #[ignore = "VM not yet implemented"] parameters,
+        #[ignore = "VM not yet implemented"] print,
+        #[ignore = "VM not yet implemented"] recursion,
+        #[ignore = "VM not yet implemented"] too_many_arguments,
+        #[ignore = "VM not yet implemented"] too_many_parameters,
     ]);
 }
 
 mod if_stmt {
-    lox_tests!("if", [
-        class_in_else,
-        class_in_then,
-        dangling_else,
-        r#else,
-        fun_in_else,
-        fun_in_then,
-        r#if,
-        truth,
-        var_in_else,
-        var_in_then,
+    rlox::lox_tests!("if", [
+        #[ignore = "VM not yet implemented"] class_in_else,
+        #[ignore = "VM not yet implemented"] class_in_then,
+        #[ignore = "VM not yet implemented"] dangling_else,
+        #[ignore = "VM not yet implemented"] r#else,
+        #[ignore = "VM not yet implemented"] fun_in_else,
+        #[ignore = "VM not yet implemented"] fun_in_then,
+        #[ignore = "VM not yet implemented"] r#if,
+        #[ignore = "VM not yet implemented"] truth,
+        #[ignore = "VM not yet implemented"] var_in_else,
+        #[ignore = "VM not yet implemented"] var_in_then,
     ]);
 }
 
 mod inheritance {
-    lox_tests!("inheritance", [
-        constructor,
-        inherit_from_function,
-        inherit_from_nil,
-        inherit_from_number,
-        inherit_methods,
-        parenthesized_superclass,
-        set_fields_from_base_class,
+    rlox::lox_tests!("inheritance", [
+        #[ignore = "VM not yet implemented"] constructor,
+        #[ignore = "VM not yet implemented"] inherit_from_function,
+        #[ignore = "VM not yet implemented"] inherit_from_nil,
+        #[ignore = "VM not yet implemented"] inherit_from_number,
+        #[ignore = "VM not yet implemented"] inherit_methods,
+        #[ignore = "VM not yet implemented"] parenthesized_superclass,
+        #[ignore = "VM not yet implemented"] set_fields_from_base_class,
     ]);
 }
 
 mod limit {
-    lox_tests!("limit", [
-        loop_too_large,
-        no_reuse_constants,
-        stack_overflow,
-        too_many_constants,
-        too_many_locals,
-        too_many_upvalues,
+    rlox::lox_tests!("limit", [
+        #[ignore = "VM not yet implemented"] loop_too_large,
+        #[ignore = "VM not yet implemented"] no_reuse_constants,
+        #[ignore = "VM not yet implemented"] stack_overflow,
+        #[ignore = "VM not yet implemented"] too_many_constants,
+        #[ignore = "VM not yet implemented"] too_many_locals,
+        #[ignore = "VM not yet implemented"] too_many_upvalues,
     ]);
 }
 
 mod logical_operator {
-    lox_tests!("logical_operator", [
-        and,
-        and_truth,
-        or,
-        or_truth,
+    rlox::lox_tests!("logical_operator", [
+        #[ignore = "VM not yet implemented"] and,
+        #[ignore = "VM not yet implemented"] and_truth,
+        #[ignore = "VM not yet implemented"] or,
+        #[ignore = "VM not yet implemented"] or_truth,
     ]);
 }
 
 mod method {
-    lox_tests!("method", [
-        arity,
-        empty_block,
-        extra_arguments,
-        missing_arguments,
-        not_found,
-        print_bound_method,
-        refer_to_name,
-        too_many_arguments,
-        too_many_parameters,
+    rlox::lox_tests!("method", [
+        #[ignore = "VM not yet implemented"] arity,
+        #[ignore = "VM not yet implemented"] empty_block,
+        #[ignore = "VM not yet implemented"] extra_arguments,
+        #[ignore = "VM not yet implemented"] missing_arguments,
+        #[ignore = "VM not yet implemented"] not_found,
+        #[ignore = "VM not yet implemented"] print_bound_method,
+        #[ignore = "VM not yet implemented"] refer_to_name,
+        #[ignore = "VM not yet implemented"] too_many_arguments,
+        #[ignore = "VM not yet implemented"] too_many_parameters,
     ]);
 }
 
 mod nil_ {
-    lox_tests!("nil", [
+    rlox::lox_tests!("nil", [
         literal,
     ]);
 }
 
 mod number {
-    lox_tests!("number", [
+    rlox::lox_tests!("number", [
         decimal_point_at_eof,
         leading_dot,
         literals,
@@ -279,7 +255,7 @@ mod number {
 }
 
 mod operator {
-    lox_tests!("operator", [
+    rlox::lox_tests!("operator", [
         add,
         add_bool_nil,
         add_bool_num,
@@ -292,8 +268,8 @@ mod operator {
         divide_nonnum_num,
         divide_num_nonnum,
         equals,
-        equals_class,
-        equals_method,
+        #[ignore = "VM not yet implemented"] equals_class,
+        #[ignore = "VM not yet implemented"] equals_method,
         greater_nonnum_num,
         greater_num_nonnum,
         greater_or_equal_nonnum_num,
@@ -307,8 +283,8 @@ mod operator {
         multiply_num_nonnum,
         negate,
         negate_nonnum,
-        not,
-        not_class,
+        #[ignore = "VM not yet implemented"] not,
+        #[ignore = "VM not yet implemented"] not_class,
         not_equals,
         subtract,
         subtract_nonnum_num,
@@ -317,7 +293,7 @@ mod operator {
 }
 
 mod scanning {
-    lox_tests!("scanning", [
+    rlox::lox_tests!("scanning", [
         identifiers,
         keywords,
         numbers,
@@ -328,7 +304,7 @@ mod scanning {
 }
 
 mod print_ {
-    lox_tests!("print", [
+    rlox::lox_tests!("print", [
         missing_argument,
     ]);
 }
@@ -348,19 +324,19 @@ mod regression {
 }
 
 mod return_stmt {
-    lox_tests!("return", [
-        after_else,
-        after_if,
-        after_while,
-        at_top_level,
-        in_function,
-        in_method,
-        return_nil_if_no_value,
+    rlox::lox_tests!("return", [
+        #[ignore = "VM not yet implemented"] after_else,
+        #[ignore = "VM not yet implemented"] after_if,
+        #[ignore = "VM not yet implemented"] after_while,
+        #[ignore = "VM not yet implemented"] at_top_level,
+        #[ignore = "VM not yet implemented"] in_function,
+        #[ignore = "VM not yet implemented"] in_method,
+        #[ignore = "VM not yet implemented"] return_nil_if_no_value,
     ]);
 }
 
 mod string {
-    lox_tests!("string", [
+    rlox::lox_tests!("string", [
         error_after_multiline,
         literals,
         multiline,
@@ -369,76 +345,76 @@ mod string {
 }
 
 mod super_ {
-    lox_tests!("super", [
-        bound_method,
-        call_other_method,
-        call_same_method,
-        closure,
-        constructor,
-        extra_arguments,
-        indirectly_inherited,
-        missing_arguments,
-        no_superclass_bind,
-        no_superclass_call,
-        no_superclass_method,
-        parenthesized,
-        reassign_superclass,
-        super_at_top_level,
-        super_in_closure_in_inherited_method,
-        super_in_inherited_method,
-        super_in_top_level_function,
-        super_without_dot,
-        super_without_name,
-        this_in_superclass_method,
+    rlox::lox_tests!("super", [
+        #[ignore = "VM not yet implemented"] bound_method,
+        #[ignore = "VM not yet implemented"] call_other_method,
+        #[ignore = "VM not yet implemented"] call_same_method,
+        #[ignore = "VM not yet implemented"] closure,
+        #[ignore = "VM not yet implemented"] constructor,
+        #[ignore = "VM not yet implemented"] extra_arguments,
+        #[ignore = "VM not yet implemented"] indirectly_inherited,
+        #[ignore = "VM not yet implemented"] missing_arguments,
+        #[ignore = "VM not yet implemented"] no_superclass_bind,
+        #[ignore = "VM not yet implemented"] no_superclass_call,
+        #[ignore = "VM not yet implemented"] no_superclass_method,
+        #[ignore = "VM not yet implemented"] parenthesized,
+        #[ignore = "VM not yet implemented"] reassign_superclass,
+        #[ignore = "VM not yet implemented"] super_at_top_level,
+        #[ignore = "VM not yet implemented"] super_in_closure_in_inherited_method,
+        #[ignore = "VM not yet implemented"] super_in_inherited_method,
+        #[ignore = "VM not yet implemented"] super_in_top_level_function,
+        #[ignore = "VM not yet implemented"] super_without_dot,
+        #[ignore = "VM not yet implemented"] super_without_name,
+        #[ignore = "VM not yet implemented"] this_in_superclass_method,
     ]);
 }
 
 mod this_ {
-    lox_tests!("this", [
-        closure,
-        nested_class,
-        nested_closure,
-        this_at_top_level,
-        this_in_method,
-        this_in_top_level_function,
+    rlox::lox_tests!("this", [
+        #[ignore = "VM not yet implemented"] closure,
+        #[ignore = "VM not yet implemented"] nested_class,
+        #[ignore = "VM not yet implemented"] nested_closure,
+        #[ignore = "VM not yet implemented"] this_at_top_level,
+        #[ignore = "VM not yet implemented"] this_in_method,
+        #[ignore = "VM not yet implemented"] this_in_top_level_function,
     ]);
 }
 
 mod variable {
-    lox_tests!("variable", [
-        collide_with_parameter,
-        duplicate_local,
-        duplicate_parameter,
-        early_bound,
-        in_middle_of_block,
-        in_nested_block,
-        local_from_method,
+    rlox::lox_tests!("variable", [
+        #[ignore = "VM not yet implemented"] collide_with_parameter,
+        #[ignore = "VM not yet implemented"] duplicate_local,
+        #[ignore = "VM not yet implemented"] duplicate_parameter,
+        #[ignore = "VM not yet implemented"] early_bound,
+        #[ignore = "VM not yet implemented"] in_middle_of_block,
+        #[ignore = "VM not yet implemented"] in_nested_block,
+        #[ignore = "VM not yet implemented"] local_from_method,
         redeclare_global,
         redefine_global,
-        scope_reuse_in_different_blocks,
-        shadow_and_local,
-        shadow_global,
-        shadow_local,
+        #[ignore = "VM not yet implemented"] scope_reuse_in_different_blocks,
+        #[ignore = "VM not yet implemented"] shadow_and_local,
+        #[ignore = "VM not yet implemented"] shadow_global,
+        #[ignore = "VM not yet implemented"] shadow_local,
         undefined_global,
-        undefined_local,
+        #[ignore = "VM not yet implemented"] undefined_local,
         uninitialized,
-        unreached_undefined,
+        #[ignore = "VM not yet implemented"] unreached_undefined,
         use_false_as_var,
         use_global_in_initializer,
-        use_local_in_initializer,
+        #[ignore = "VM not yet implemented"] use_local_in_initializer,
         use_nil_as_var,
         use_this_as_var,
     ]);
 }
 
 mod while_loop {
-    lox_tests!("while", [
-        class_in_body,
-        closure_in_body,
-        fun_in_body,
-        return_closure,
-        return_inside,
-        syntax,
-        var_in_body,
+    rlox::lox_tests!("while", [
+        #[ignore = "VM not yet implemented"] class_in_body,
+        #[ignore = "VM not yet implemented"] closure_in_body,
+        #[ignore = "VM not yet implemented"] fun_in_body,
+        #[ignore = "VM not yet implemented"] return_closure,
+        #[ignore = "VM not yet implemented"] return_inside,
+        #[ignore = "VM not yet implemented"] syntax,
+        #[ignore = "VM not yet implemented"] var_in_body,
     ]);
 }
