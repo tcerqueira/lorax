@@ -12,7 +12,6 @@ use report::{Span, error::LexingError};
 use crate::{
     chunk::Chunk,
     compiler::{error::CompileError, scopes::Scopes},
-    object::internal_str::InternalStr,
     opcode::{OpCode, Slot},
     storage::Storage,
     value::{Addr, Value},
@@ -400,8 +399,7 @@ impl<'s, 't> Compiler<'s, 't> {
             unreachable!("expected string token");
         };
         let key = self.storage.intern(&s);
-        let obj = self.storage.add_obj(InternalStr::boxed(key));
-        self.emit_constant_and_line(span.line_start, Value::object(obj));
+        self.emit_constant_and_line(span.line_start, Value::symbol(key));
         Ok(Handle::Value)
     }
 
@@ -497,8 +495,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn ident_constant(&mut self, name: Spur) -> Addr {
-        let obj = self.storage.add_obj(InternalStr::boxed(name));
-        self.add_constant(Value::object(obj))
+        self.add_constant(Value::symbol(name))
     }
 
     fn begin_scope(&mut self) {
@@ -712,12 +709,12 @@ mod tests {
     #[test]
     fn dedups_repeated_string_literal() {
         let chunk = compile(r#"print "hi"; print "hi"; print "hi";"#);
-        let strings = chunk
+        let symbols = chunk
             .constants
             .iter()
-            .filter(|v| matches!(v, Value::Object(_)))
+            .filter(|v| matches!(v, Value::Symbol(_)))
             .count();
-        assert_eq!(strings, 1);
+        assert_eq!(symbols, 1);
     }
 
     #[test]

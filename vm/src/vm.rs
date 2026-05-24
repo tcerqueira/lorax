@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
     io::{Cursor, Seek},
-    mem::{self, transmute},
+    mem,
     ops::{Add, Div, Mul, Sub},
 };
 
@@ -12,7 +12,7 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::OpDecoder,
-    object::{ObjKind, Object, internal_str::InternalStr, string::StringObj},
+    object::{Object, string::StringObj},
     opcode::OpCode,
     storage::Storage,
     value::{Addr, Value, ValueError},
@@ -70,12 +70,7 @@ impl VirtualMachine {
                     let v = self.stack.top_mut();
                     *v = (-v.clone()).map_err(invalid_operand_err)?;
                 }
-                OpCode::Add
-                    if let (Value::Object(o1), Value::Object(o2)) =
-                        (self.stack.peek(0), self.stack.peek(1))
-                        && o1.is_str()
-                        && o2.is_str() =>
-                {
+                OpCode::Add if self.stack.peek(0).is_str() && self.stack.peek(1).is_str() => {
                     self.concatenate_str()
                 }
                 OpCode::Add => self.binary_op(Value::add).map_err(invalid_operand_err)?,
@@ -102,10 +97,11 @@ impl VirtualMachine {
                 OpCode::Less => self.binary_op(Value::less).map_err(invalid_operand_err)?,
                 OpCode::Print => {
                     let v = self.stack.pop();
-                    match v {
-                        Value::Object(v) if v.is_str() => println!("{}", v.as_str(&self.storage)),
-                        v => println!("{v}"),
-                    };
+                    if v.is_str() {
+                        println!("{}", v.as_str(&self.storage));
+                    } else {
+                        println!("{v}");
+                    }
                 }
                 OpCode::Pop => _ = self.stack.pop(),
                 OpCode::PopN(n) => self.stack.pop_n(n),
@@ -116,7 +112,7 @@ impl VirtualMachine {
                     self.stack.pop();
                 }
                 OpCode::GetGlobal(addr) => {
-                    let key = self.variable_name(&chunk, addr).key;
+                    let key = self.variable_name(&chunk, addr);
                     match self.globals.get(&key) {
                         Some(value) => {
                             let value = value.clone();
@@ -163,24 +159,12 @@ impl VirtualMachine {
     fn equal(&mut self) {
         let b = self.stack.pop();
         let a = self.stack.pop();
-        if mem::discriminant(&a) != mem::discriminant(&b) {
-            return self.stack.push(Value::boolean(false));
-        }
-
-        let res = match (a, b) {
-            (Value::Object(a), Value::Object(b)) => match (a.kind(), b.kind()) {
-                // Safety: checked kind before casting.
-                (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
-                    a.downcast_ref::<InternalStr>() == b.downcast_ref::<InternalStr>()
-                },
-                (s1, s2) if a.is_str() && b.is_str() => {
-                    let a = a.as_str(&self.storage);
-                    let b = b.as_str(&self.storage);
-                    a == b
-                }
-                _ => Object::eq(&a, &b),
-            },
-            (a, b) => a == b,
+        let res = match (&a, &b) {
+            (Value::Symbol(x), Value::Symbol(y)) => x == y,
+            _ if a.is_str() && b.is_str() => a.as_str(&self.storage) == b.as_str(&self.storage),
+            _ if mem::discriminant(&a) != mem::discriminant(&b) => false,
+            (Value::Object(a), Value::Object(b)) => Object::eq(a, b),
+            _ => a == b,
         };
         self.stack.push(Value::boolean(res));
     }
@@ -188,13 +172,11 @@ impl VirtualMachine {
     fn concatenate_str(&mut self) {
         // Build the joined string while the operands stay on the stack as GC roots.
         let s = {
-            let (Value::Object(a), Value::Object(b)) = (self.stack.peek(1), self.stack.peek(0))
-            else {
-                unreachable!("just matched Object in branch");
-            };
+            let a = self.stack.peek(1).as_str(&self.storage);
+            let b = self.stack.peek(0).as_str(&self.storage);
             // PERF: create constructor that adds in place, reduces one allocation
-            let mut s = a.as_str(&self.storage).to_owned();
-            s.push_str(b.as_str(&self.storage));
+            let mut s = a.to_owned();
+            s.push_str(b);
             s
         };
         let obj = self.storage.add_obj(StringObj::boxed(&s));
@@ -211,25 +193,16 @@ impl VirtualMachine {
     ) -> T {
         // Value stays on the stack across `f` so it remains a GC root if a
         // future collector triggers during a globals rehash.
-        let key = self.variable_name(chunk, addr).key;
+        let key = self.variable_name(chunk, addr);
         let value = self.stack.top().clone();
         f(self, key, value)
     }
 
-    fn variable_name<'a>(&'a self, chunk: &Chunk, addr: Addr) -> &'a InternalStr {
-        let Value::Object(name) = chunk.constant(addr) else {
-            panic!("could not get variable name: value is not an object of string type")
+    fn variable_name(&self, chunk: &Chunk, addr: Addr) -> Spur {
+        let Value::Symbol(key) = chunk.constant(addr) else {
+            panic!("could not get variable name: constant slot is not a Symbol")
         };
-        assert_eq!(
-            name.kind(),
-            ObjKind::InternalStr,
-            "could not get variable name: value is not an object of string type"
-        );
-        // SAFETY: all UnsafeRef objects are bound by Storage which has the same lifetime as &self
-        unsafe {
-            let name = name.downcast_ref::<InternalStr>();
-            transmute::<_, &'a InternalStr>(name)
-        }
+        *key
     }
 
     fn trace(&self, op: OpCode) {

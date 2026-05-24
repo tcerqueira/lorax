@@ -8,12 +8,8 @@ use std::{
 use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
-use crate::{
-    object::{internal_str::InternalStr, string::StringObj},
-    storage::Storage,
-};
+use crate::object::string::StringObj;
 
-pub mod internal_str;
 pub mod string;
 
 /// A concrete object kind that can be stored behind an [`Object`] header.
@@ -49,20 +45,12 @@ intrusive_adapter!(pub ObjectAdapter = UnsafeRef<Object>: Object { link => Singl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjKind {
     String,
-    InternalStr,
 }
 
 impl Object {
     pub fn string() -> Self {
         Self {
             kind: ObjKind::String,
-            link: SinglyLinkedListLink::new(),
-        }
-    }
-
-    pub fn internal_str() -> Self {
-        Self {
-            kind: ObjKind::InternalStr,
             link: SinglyLinkedListLink::new(),
         }
     }
@@ -116,21 +104,12 @@ impl Object {
         self.kind
     }
 
-    pub fn is_str(&self) -> bool {
-        self.kind == ObjKind::String || self.kind == ObjKind::InternalStr
-    }
-
-    pub fn as_str<'s>(self: &UnsafeRef<Self>, storage: &'s Storage) -> &'s str {
+    pub fn as_str(self: &UnsafeRef<Self>) -> &str {
+        // SAFETY: matched kind witnesses the dynamic type on each side.
         match self.kind() {
-            ObjKind::String => unsafe {
-                // SAFETY: the alloc is owned by `storage.heap` (an ObjectPool),
-                // which is borrowed shared via `&'s Storage`, so it cannot be
-                // dropped or mutated for the duration of `'s`. The buffer sits
-                // inline in that alloc, so the `&str` is valid for `'s`.
-                let s: &str = self.downcast_ref::<StringObj>().as_str();
-                mem::transmute::<&str, &'s str>(s)
-            },
-            ObjKind::InternalStr => unsafe { self.downcast_ref::<InternalStr>().as_str(storage) },
+            ObjKind::String => unsafe { self.downcast_ref::<StringObj>().as_str() },
+            #[expect(unreachable_patterns)]
+            o => panic!("Object::as_str called on non-string {o:?}"),
         }
     }
 }
@@ -142,10 +121,6 @@ impl Object {
             (ObjKind::String, ObjKind::String) => unsafe {
                 self.downcast_ref::<StringObj>() == other.downcast_ref::<StringObj>()
             },
-            (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
-                self.downcast_ref::<InternalStr>() == other.downcast_ref::<InternalStr>()
-            },
-            _ => false,
         }
     }
 
@@ -153,7 +128,6 @@ impl Object {
         match self.kind() {
             // SAFETY: matched kind witnesses the dynamic type.
             ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<StringObj>() }, f),
-            ObjKind::InternalStr => Display::fmt(unsafe { self.downcast_ref::<InternalStr>() }, f),
         }
     }
 }
@@ -209,23 +183,14 @@ impl Drop for OwnedObject {
             // `StringObj::boxed`, so re-boxing here uses the matching dealloc
             // path.
             ObjKind::String => drop(unsafe { Box::from_raw(StringObj::unerase(erased).as_ptr()) }),
-            ObjKind::InternalStr => {
-                drop(unsafe { Box::from_raw(InternalStr::unerase(erased).as_ptr()) })
-            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use lasso::Rodeo;
-
     use super::*;
-
-    fn boxed_internal_str(s: &str) -> OwnedObject {
-        let mut rodeo = Rodeo::new();
-        InternalStr::boxed(rodeo.get_or_intern(s)).upcast()
-    }
+    use crate::storage::Storage;
 
     #[test]
     fn drop_frees_string_alloc() {
@@ -233,12 +198,6 @@ mod tests {
         // Miri catches leaks/UB.
         let owned = StringObj::boxed("dropped via OwnedObject").upcast();
         drop(owned);
-    }
-
-    #[test]
-    fn drop_frees_internal_str_alloc() {
-        // Smoke test for the `InternalStr` Drop branch.
-        drop(boxed_internal_str("drop me"));
     }
 
     #[test]
@@ -251,54 +210,13 @@ mod tests {
     fn as_ref_returns_object() {
         let owned = StringObj::boxed("a").upcast();
         let obj: &Object = owned.as_ref();
-        assert!(obj.is_str());
-    }
-
-    fn intern_obj(storage: &mut Storage, s: &str) -> UnsafeRef<Object> {
-        let key = storage.intern(s);
-        storage.add_obj(InternalStr::boxed(key))
+        assert_eq!(obj.kind(), ObjKind::String);
     }
 
     #[test]
-    fn as_str_for_internal_str_kind() {
-        let mut storage = Storage::new();
-        let obj_ref = intern_obj(&mut storage, "interned");
-        assert_eq!(obj_ref.as_str(&storage), "interned");
-    }
-
-    #[test]
-    fn as_str_for_string_kind() {
-        // Exercises the `StringObj` arm (including the `&str` lifetime
-        // launder). Pool owns the alloc; storage Drop reclaims it.
+    fn as_str_returns_buffer() {
         let mut storage = Storage::new();
         let obj_ref = storage.add_obj(StringObj::boxed("plain"));
-        assert_eq!(obj_ref.as_str(&storage), "plain");
-    }
-
-    #[test]
-    fn equal_internal_strings_compare_equal_via_object() {
-        let mut storage = Storage::new();
-        let a = intern_obj(&mut storage, "eq");
-        let b = intern_obj(&mut storage, "eq");
-        assert!(a.eq(&b));
-    }
-
-    #[test]
-    fn distinct_internal_strings_not_equal_via_object() {
-        let mut storage = Storage::new();
-        let a = intern_obj(&mut storage, "a");
-        let b = intern_obj(&mut storage, "b");
-        assert!(!a.eq(&b));
-    }
-
-    #[test]
-    fn cross_kind_string_eq_returns_false() {
-        // Mixed object kinds don't dedup / aren't equal at the Object layer.
-        // Real string-vs-internal-str equality has to route through `as_str`
-        // (the VM's `equal` op does this).
-        let mut storage = Storage::new();
-        let s = storage.add_obj(StringObj::boxed("x"));
-        let i = intern_obj(&mut storage, "x");
-        assert!(!s.eq(&i));
+        assert_eq!(obj_ref.as_str(), "plain");
     }
 }

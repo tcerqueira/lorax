@@ -8,9 +8,6 @@ use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject};
 /// Two services, kept separate at the call site:
 /// - [`Self::intern`] / [`Self::resolve`] for `&str` ↔ [`Spur`] (no alloc).
 /// - [`Self::add_obj`] to put a heap [`Object`] under pool ownership.
-///
-/// Callers that need both — e.g. compiling a string literal — chain them
-/// explicitly: `storage.add_obj(InternalStr::boxed(storage.intern(s)))`.
 #[derive(Default)]
 pub struct Storage {
     heap: ObjectPool,

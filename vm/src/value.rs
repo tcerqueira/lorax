@@ -6,8 +6,12 @@ use std::{
 };
 
 use intrusive_collections::UnsafeRef;
+use lasso::Spur;
 
-use crate::object::Object;
+use crate::{
+    object::{ObjKind, Object},
+    storage::Storage,
+};
 
 pub struct ValueError;
 
@@ -16,6 +20,7 @@ pub enum Value {
     Nil,
     Boolean(bool),
     Number(f64),
+    Symbol(Spur),
     Object(UnsafeRef<Object>),
 }
 
@@ -32,6 +37,10 @@ impl Value {
         Self::Number(value)
     }
 
+    pub fn symbol(key: Spur) -> Self {
+        Self::Symbol(key)
+    }
+
     pub fn object(value: UnsafeRef<Object>) -> Self {
         Self::Object(value)
     }
@@ -41,6 +50,22 @@ impl Value {
             Self::Boolean(b) => *b,
             Self::Nil => false,
             _ => false,
+        }
+    }
+
+    pub fn is_str(&self) -> bool {
+        match self {
+            Self::Symbol(_) => true,
+            Self::Object(o) => o.kind() == ObjKind::String,
+            _ => false,
+        }
+    }
+
+    pub fn as_str<'s>(&'s self, storage: &'s Storage) -> &'s str {
+        match self {
+            Self::Symbol(key) => storage.resolve(*key),
+            Self::Object(o) if o.kind() == ObjKind::String => o.as_str(),
+            _ => panic!("Value::as_str called on non-string {self:?}"),
         }
     }
 
@@ -121,6 +146,7 @@ impl PartialEq for Value {
             (Self::Nil, Self::Nil) => true,
             (Self::Boolean(a), Self::Boolean(b)) => a == b,
             (Self::Number(a), Self::Number(b)) => a == b,
+            (Self::Symbol(a), Self::Symbol(b)) => a == b,
             (Self::Object(a), Self::Object(b)) => a.eq(b),
             _ => unreachable!("missing impl for PartialEq"),
         }
@@ -147,6 +173,7 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(n) => write!(f, "{n}"),
+            Value::Symbol(key) => write!(f, "Symbol({})", key.into_inner()),
             Value::Object(obj) => obj.display_fmt(f),
         }
     }
