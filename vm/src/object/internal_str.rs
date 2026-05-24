@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use lasso::{Rodeo, Spur};
+use lasso::Spur;
 
 use crate::{
     object::{Object, ObjectKind},
@@ -15,20 +15,11 @@ pub struct InternalStr {
 }
 
 impl InternalStr {
-    pub fn new(strings: &mut Rodeo, s: &str) -> Self {
-        let key = strings.get_or_intern(s);
-        Self::from_spur(key)
-    }
-
-    pub fn from_spur(key: Spur) -> Self {
-        Self {
+    pub fn boxed(key: Spur) -> Box<Self> {
+        Box::new(Self {
             _obj: Object::internal_str(),
             key,
-        }
-    }
-
-    pub fn boxed(key: Spur) -> Box<Self> {
-        Box::new(Self::from_spur(key))
+        })
     }
 
     pub fn as_str<'a>(&self, storage: &'a Storage) -> &'a str {

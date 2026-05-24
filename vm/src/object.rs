@@ -228,7 +228,7 @@ mod tests {
 
     fn boxed_internal_str(s: &str) -> OwnedObject {
         let mut rodeo = Rodeo::new();
-        Box::new(InternalStr::new(&mut rodeo, s)).upcast()
+        InternalStr::boxed(rodeo.get_or_intern(s)).upcast()
     }
 
     #[test]

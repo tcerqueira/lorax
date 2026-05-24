@@ -214,7 +214,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn global_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
-        let name = self.ident_spur(&ident);
+        let name = self.storage.intern(&ident.as_str());
         let addr = self.ident_constant(name);
         self.var_initializer(&ident)?;
         let semi = self.consume(TokenType::Semicolon)?;
@@ -223,7 +223,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn local_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
-        let name = self.ident_spur(&ident);
+        let name = self.storage.intern(&ident.as_str());
         self.var_initializer(&ident)?;
         self.consume(TokenType::Semicolon)?;
 
@@ -417,7 +417,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
-        let name = self.ident_spur(&tok);
+        let name = self.storage.intern(&tok.as_str());
         let line = tok.span.line_start;
         // Locals win over globals (same name → most recent local). On miss,
         // materialize the name as a chunk constant so the runtime can look
@@ -494,10 +494,6 @@ impl<'s, 't> Compiler<'s, 't> {
                 self.emit_op_and_line(line, OpCode::SetLocal(slot));
             }
         }
-    }
-
-    fn ident_spur(&mut self, tok: &Token) -> Spur {
-        self.storage.intern(tok.as_str().as_ref())
     }
 
     fn ident_constant(&mut self, name: Spur) -> Addr {
