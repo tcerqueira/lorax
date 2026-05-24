@@ -12,7 +12,7 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::OpDecoder,
-    object::{Object, string::StringObj},
+    object::{Object, string::LoxString},
     opcode::OpCode,
     storage::Storage,
     value::{Addr, Value, ValueError},
@@ -179,7 +179,7 @@ impl VirtualMachine {
             s.push_str(b);
             s
         };
-        let obj = self.storage.add_obj(StringObj::boxed(&s));
+        let obj = self.storage.add_obj(LoxString::boxed(&s));
         self.stack.pop();
         self.stack.pop();
         self.stack.push(Value::Object(obj));

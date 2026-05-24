@@ -13,13 +13,13 @@ use crate::object::{Object, ObjectKind};
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct StringObj {
+pub struct LoxString {
     obj: Object,
     len: usize,
     buf: [u8],
 }
 
-impl StringObj {
+impl LoxString {
     pub fn boxed(s: &str) -> Box<Self> {
         let bytes = s.as_bytes();
         // SAFETY: `Box::new_slice_dst` allocates with `Self::layout_for(len)`
@@ -49,14 +49,14 @@ impl StringObj {
     }
 }
 
-// SAFETY: `StringObj` is `#[repr(C)]` with `Object` (`obj`) as its first
+// SAFETY: `LoxString` is `#[repr(C)]` with `Object` (`obj`) as its first
 // field, so an `Object` header at offset 0 is layout-compatible. Construction
 // goes through `Self::boxed`, which sets `obj.kind = ObjKind::String`.
-unsafe impl ObjectKind for StringObj {}
+unsafe impl ObjectKind for LoxString {}
 
 // SAFETY: `layout_for(len)` produces the exact layout written by `boxed`'s
 // initializer, and `retype` is a pure pointer cast as required.
-unsafe impl SliceDst for StringObj {
+unsafe impl SliceDst for LoxString {
     fn layout_for(len: usize) -> Layout {
         let (l, _) = Layout::new::<Object>()
             .extend(Layout::new::<usize>())
@@ -70,14 +70,14 @@ unsafe impl SliceDst for StringObj {
     }
 }
 
-// SAFETY: the inline `len` field at `offset_of!(StringObj, len)` always equals
+// SAFETY: the inline `len` field at `offset_of!(LoxString, len)` always equals
 // the slice length used to allocate the value (set in `boxed`), so reading it
 // rebuilds the correct fat pointer. The read is a raw pointer read, no
 // reference is materialized.
-unsafe impl Erasable for StringObj {
+unsafe impl Erasable for LoxString {
     unsafe fn unerase(this: ErasedPtr) -> NonNull<Self> {
         let raw = this.as_ptr();
-        // SAFETY: `raw` came from `erase` on a `NonNull<StringObj>`; the `len`
+        // SAFETY: `raw` came from `erase` on a `NonNull<LoxString>`; the `len`
         // field lives at a fixed `#[repr(C)]` offset and is initialized.
         let len = unsafe {
             ptr::read(
@@ -92,13 +92,13 @@ unsafe impl Erasable for StringObj {
     const ACK_1_1_0: bool = true;
 }
 
-impl PartialEq for StringObj {
+impl PartialEq for LoxString {
     fn eq(&self, other: &Self) -> bool {
         self.as_str() == other.as_str()
     }
 }
 
-impl Deref for StringObj {
+impl Deref for LoxString {
     type Target = str;
 
     fn deref(&self) -> &str {
@@ -108,19 +108,19 @@ impl Deref for StringObj {
     }
 }
 
-impl AsRef<str> for StringObj {
+impl AsRef<str> for LoxString {
     fn as_ref(&self) -> &str {
         self
     }
 }
 
-impl AsRef<[u8]> for StringObj {
+impl AsRef<[u8]> for LoxString {
     fn as_ref(&self) -> &[u8] {
         &self.buf
     }
 }
 
-impl Display for StringObj {
+impl Display for LoxString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.as_str().fmt(f)
     }
@@ -134,14 +134,14 @@ mod tests {
 
     #[test]
     fn new_preserves_ascii() {
-        let s = StringObj::boxed("hello");
+        let s = LoxString::boxed("hello");
         assert_eq!(&**s, "hello");
         assert_eq!(s.len, 5);
     }
 
     #[test]
     fn new_empty_string() {
-        let s = StringObj::boxed("");
+        let s = LoxString::boxed("");
         assert_eq!(&**s, "");
         assert_eq!(s.len, 0);
     }
@@ -149,32 +149,32 @@ mod tests {
     #[test]
     fn new_preserves_utf8() {
         let input = "héllo 世界 🦀";
-        let s = StringObj::boxed(input);
+        let s = LoxString::boxed(input);
         assert_eq!(&**s, input);
         assert_eq!(s.len, input.len());
     }
 
     #[test]
     fn as_ref_bytes_matches() {
-        let s = StringObj::boxed("abc");
+        let s = LoxString::boxed("abc");
         let bytes = s.as_bytes();
         assert_eq!(bytes, b"abc");
     }
 
     #[test]
     fn box_drops_cleanly() {
-        // Smoke test: dropping Box<StringObj> uses fat-pointer Layout::for_value
+        // Smoke test: dropping Box<LoxString> uses fat-pointer Layout::for_value
         // to dealloc the full alloc. Miri verifies no leak/UB.
-        let _ = StringObj::boxed("dropped via Box");
+        let _ = LoxString::boxed("dropped via Box");
     }
 
     #[test]
     fn upcast_downcast_roundtrip() {
         let mut pool = crate::storage::ObjectPool::new();
-        let obj_ref = pool.add(StringObj::boxed("roundtrip"));
-        // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
-        // dynamic kind is `StringObj`.
-        let downcast = unsafe { obj_ref.downcast::<StringObj>() };
+        let obj_ref = pool.add(LoxString::boxed("roundtrip"));
+        // SAFETY: `obj_ref` was just produced from a `LoxString`, so its
+        // dynamic kind is `LoxString`.
+        let downcast = unsafe { obj_ref.downcast::<LoxString>() };
         assert_eq!(&**downcast, "roundtrip");
         // Don't drop `downcast` — pool owns the alloc.
         let _ = UnsafeRef::into_raw(downcast);

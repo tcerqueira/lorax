@@ -71,12 +71,12 @@ impl Drop for ObjectPool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::object::{ObjKind, string::StringObj};
+    use crate::object::{ObjKind, string::LoxString};
 
     #[test]
     fn add_obj_routes_through_pool() {
         let mut storage = Storage::new();
-        let obj_ref = storage.add_obj(StringObj::boxed("via add_obj"));
+        let obj_ref = storage.add_obj(LoxString::boxed("via add_obj"));
         assert_eq!(obj_ref.kind(), ObjKind::String);
         // Pool owns the alloc; release our handle without freeing.
         let _ = UnsafeRef::into_raw(obj_ref);
@@ -85,21 +85,21 @@ mod tests {
     #[test]
     fn add_one_and_drop_pool() {
         let mut pool = ObjectPool::new();
-        pool.add(StringObj::boxed("one"));
+        pool.add(LoxString::boxed("one"));
     }
 
     #[test]
     fn add_many_and_drop_pool() {
         let mut pool = ObjectPool::new();
         for i in 0..32 {
-            pool.add(StringObj::boxed(&format!("str-{i}")));
+            pool.add(LoxString::boxed(&format!("str-{i}")));
         }
     }
 
     #[test]
     fn returned_ref_kind_is_string() {
         let mut pool = ObjectPool::new();
-        let obj_ref = pool.add(StringObj::boxed("ref"));
+        let obj_ref = pool.add(LoxString::boxed("ref"));
         assert!(obj_ref.kind() == ObjKind::String);
     }
 
@@ -107,10 +107,10 @@ mod tests {
     fn returned_ref_is_alive_until_pool_drop() {
         // The UnsafeRef returned by `add` should remain valid for the pool's lifetime.
         let mut pool = ObjectPool::new();
-        let obj_ref = pool.add(StringObj::boxed("alive"));
-        // SAFETY: `obj_ref` was just produced from a `StringObj`, so its
-        // dynamic kind is `StringObj`.
-        let s = unsafe { obj_ref.downcast::<StringObj>() };
+        let obj_ref = pool.add(LoxString::boxed("alive"));
+        // SAFETY: `obj_ref` was just produced from a `LoxString`, so its
+        // dynamic kind is `LoxString`.
+        let s = unsafe { obj_ref.downcast::<LoxString>() };
         assert_eq!(&**s, "alive");
         // Don't drop `s` — pool owns the alloc.
         let _ = UnsafeRef::into_raw(s);

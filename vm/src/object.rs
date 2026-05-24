@@ -8,7 +8,7 @@ use std::{
 use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
-use crate::object::string::StringObj;
+use crate::object::string::LoxString;
 
 pub mod string;
 
@@ -107,7 +107,7 @@ impl Object {
     pub fn as_str(self: &UnsafeRef<Self>) -> &str {
         // SAFETY: matched kind witnesses the dynamic type on each side.
         match self.kind() {
-            ObjKind::String => unsafe { self.downcast_ref::<StringObj>().as_str() },
+            ObjKind::String => unsafe { self.downcast_ref::<LoxString>().as_str() },
             #[expect(unreachable_patterns)]
             o => panic!("Object::as_str called on non-string {o:?}"),
         }
@@ -119,7 +119,7 @@ impl Object {
         match (self.kind(), other.kind()) {
             // SAFETY: matched kind witnesses the dynamic type on each side.
             (ObjKind::String, ObjKind::String) => unsafe {
-                self.downcast_ref::<StringObj>() == other.downcast_ref::<StringObj>()
+                self.downcast_ref::<LoxString>() == other.downcast_ref::<LoxString>()
             },
         }
     }
@@ -127,7 +127,7 @@ impl Object {
     pub fn display_fmt(self: &UnsafeRef<Self>, f: &mut Formatter<'_>) -> fmt::Result {
         match self.kind() {
             // SAFETY: matched kind witnesses the dynamic type.
-            ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<StringObj>() }, f),
+            ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<LoxString>() }, f),
         }
     }
 }
@@ -178,11 +178,11 @@ impl Drop for OwnedObject {
             // SAFETY: `OwnedObject`'s invariant guarantees `erased` is the
             // unique owning thin pointer to a heap object whose layout matches
             // `kind`. Matching `ObjKind::String` confirms the dynamic kind is
-            // `StringObj`, so `unerase` reconstructs the correct fat pointer.
+            // `LoxString`, so `unerase` reconstructs the correct fat pointer.
             // The original allocation came from `Box::new_slice_dst` in
-            // `StringObj::boxed`, so re-boxing here uses the matching dealloc
+            // `LoxString::boxed`, so re-boxing here uses the matching dealloc
             // path.
-            ObjKind::String => drop(unsafe { Box::from_raw(StringObj::unerase(erased).as_ptr()) }),
+            ObjKind::String => drop(unsafe { Box::from_raw(LoxString::unerase(erased).as_ptr()) }),
         }
     }
 }
@@ -196,19 +196,19 @@ mod tests {
     fn drop_frees_string_alloc() {
         // Smoke test: OwnedObject::drop dispatches and frees the full alloc.
         // Miri catches leaks/UB.
-        let owned = StringObj::boxed("dropped via OwnedObject").upcast();
+        let owned = LoxString::boxed("dropped via OwnedObject").upcast();
         drop(owned);
     }
 
     #[test]
     fn deref_exposes_kind() {
-        let owned = StringObj::boxed("k").upcast();
+        let owned = LoxString::boxed("k").upcast();
         assert_eq!(owned.kind(), ObjKind::String);
     }
 
     #[test]
     fn as_ref_returns_object() {
-        let owned = StringObj::boxed("a").upcast();
+        let owned = LoxString::boxed("a").upcast();
         let obj: &Object = owned.as_ref();
         assert_eq!(obj.kind(), ObjKind::String);
     }
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn as_str_returns_buffer() {
         let mut storage = Storage::new();
-        let obj_ref = storage.add_obj(StringObj::boxed("plain"));
+        let obj_ref = storage.add_obj(LoxString::boxed("plain"));
         assert_eq!(obj_ref.as_str(), "plain");
     }
 }
