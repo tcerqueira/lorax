@@ -42,16 +42,12 @@ impl Stack {
     }
 
     pub fn top(&self) -> &Value {
-        // optimization for ops that pop 1 value and push 1 value
-        // allows mutation in place
         self.inner
             .last()
             .expect("compiler bug, nothing on top of the VM stack")
     }
 
     pub fn top_mut(&mut self) -> &mut Value {
-        // optimization for ops that pop 1 value and push 1 value
-        // allows mutation in place
         self.inner
             .last_mut()
             .expect("compiler bug, nothing on top of the VM stack")

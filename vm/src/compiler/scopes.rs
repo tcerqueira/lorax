@@ -13,11 +13,8 @@ struct Local {
     depth: u32,
 }
 
-/// Lexical-scope state owned by the compiler.
-///
-/// Tracks live locals and the current scope depth. Locals form a stack — at
-/// any moment depths are monotonically non-decreasing front-to-back, since
-/// inner scopes are always fully drained before their enclosing scope ends.
+/// Locals form a stack; depths are monotonically non-decreasing front-to-back,
+/// since inner scopes are fully drained before their enclosing scope ends.
 #[derive(Default)]
 pub struct Scopes {
     locals: Vec<Local>,

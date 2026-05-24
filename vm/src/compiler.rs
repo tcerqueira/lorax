@@ -417,9 +417,7 @@ impl<'s, 't> Compiler<'s, 't> {
     fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let name = self.storage.intern(&tok.as_str());
         let line = tok.span.line_start;
-        // Locals win over globals (same name → most recent local). On miss,
-        // materialize the name as a chunk constant so the runtime can look
-        // it up in the globals table.
+        // Locals shadow globals.
         if let Some(slot) = self.scopes.resolve(name) {
             return Ok(Handle::local(slot, line));
         }
@@ -507,9 +505,6 @@ impl<'s, 't> Compiler<'s, 't> {
         self.emit_pops(pop_count);
     }
 
-    /// Emit instructions to drop `count` values from the runtime stack. Uses
-    /// `Pop` for a single value (1 byte) and `PopN` otherwise (2 bytes).
-    /// `Scopes` caps live locals at `u8::MAX`, so the count always fits.
     fn emit_pops(&mut self, count: usize) {
         debug_assert!(count <= u8::MAX as usize, "Scopes caps locals at u8::MAX");
         match count {

@@ -4,10 +4,6 @@ use lasso::{Rodeo, Spur};
 use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject};
 
 /// Owns the runtime heap (object pool) and the string interner.
-///
-/// Two services, kept separate at the call site:
-/// - [`Self::intern`] / [`Self::resolve`] for `&str` ↔ [`Spur`] (no alloc).
-/// - [`Self::add_obj`] to put a heap [`Object`] under pool ownership.
 #[derive(Default)]
 pub struct Storage {
     heap: ObjectPool,
