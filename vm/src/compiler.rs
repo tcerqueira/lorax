@@ -498,7 +498,7 @@ impl<'s, 't> Compiler<'s, 't> {
 
     fn ident_constant(&mut self, name: Spur) -> Addr {
         let obj = self.storage.add_obj(InternalStr::boxed(name));
-        self.chunk.add_constant(Value::object(obj))
+        self.add_constant(Value::object(obj))
     }
 
     fn begin_scope(&mut self) {
@@ -530,8 +530,17 @@ impl<'s, 't> Compiler<'s, 't> {
         self.chunk.write_with_line(line, op);
     }
 
+    fn add_constant(&mut self, value: Value) -> Addr {
+        if let Some(addr) = self.chunk.constants.iter().rposition(|v| v == &value) {
+            return addr as Addr;
+        }
+        self.chunk.add_constant(value)
+    }
+
     fn emit_constant_and_line(&mut self, line: u32, value: Value) -> Addr {
-        self.chunk.write_constant_with_line(line, value)
+        let addr = self.add_constant(value);
+        self.chunk.write_with_line(line, OpCode::Constant(addr));
+        addr
     }
 
     fn advance(&mut self) -> Result<Option<Token>, LexingError> {
@@ -602,11 +611,11 @@ impl<'s, 't> Compiler<'s, 't> {
 mod tests {
     use super::*;
 
-    fn compile(src: &str) {
+    fn compile(src: &str) -> Chunk {
         let mut storage = Storage::new();
         Compiler::new(Scanner::new(src), Reporter::new(src), &mut storage)
             .compile()
-            .unwrap_or_else(|_| panic!("failed to compile `{src}`"));
+            .unwrap_or_else(|_| panic!("failed to compile `{src}`"))
     }
 
     #[test]
@@ -687,5 +696,41 @@ mod tests {
     #[test]
     fn nested_block_shadow() {
         compile("{ var a = 1; { var a = a + 1; print a; } print a; }");
+    }
+
+    #[test]
+    fn dedups_repeated_number_literal() {
+        let chunk = compile("print 1; print 1; print 1;");
+        let numbers = chunk
+            .constants
+            .iter()
+            .filter(|v| matches!(v, Value::Number(_)))
+            .count();
+        assert_eq!(numbers, 1);
+    }
+
+    #[test]
+    fn dedups_repeated_string_literal() {
+        let chunk = compile(r#"print "hi"; print "hi"; print "hi";"#);
+        let strings = chunk
+            .constants
+            .iter()
+            .filter(|v| matches!(v, Value::Object(_)))
+            .count();
+        assert_eq!(strings, 1);
+    }
+
+    #[test]
+    fn dedups_repeated_global_reference() {
+        // One number (1) + one identifier (a) — both reused across the three
+        // statements. Without dedup we'd have 4 constants (1, a, a, a).
+        let chunk = compile("var a = 1; print a; print a;");
+        assert_eq!(chunk.constants.len(), 2);
+    }
+
+    #[test]
+    fn distinct_numbers_get_distinct_slots() {
+        let chunk = compile("print 1; print 2; print 3;");
+        assert_eq!(chunk.constants.len(), 3);
     }
 }

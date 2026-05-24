@@ -145,11 +145,7 @@ impl Object {
             (ObjKind::InternalStr, ObjKind::InternalStr) => unsafe {
                 self.downcast_ref::<InternalStr>() == other.downcast_ref::<InternalStr>()
             },
-            _ => panic!(
-                "cant compare {:?} and {:?} with just the object",
-                self.kind(),
-                other.kind()
-            ),
+            _ => false,
         }
     }
 
@@ -296,13 +292,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cant compare")]
-    fn cross_kind_string_eq_panics() {
-        // `Object::eq` deliberately panics for mixed string kinds — callers
-        // must route through `as_str` (the VM does this in `equal`).
+    fn cross_kind_string_eq_returns_false() {
+        // Mixed object kinds don't dedup / aren't equal at the Object layer.
+        // Real string-vs-internal-str equality has to route through `as_str`
+        // (the VM's `equal` op does this).
         let mut storage = Storage::new();
         let s = storage.add_obj(StringObj::boxed("x"));
         let i = intern_obj(&mut storage, "x");
-        let _ = s.eq(&i);
+        assert!(!s.eq(&i));
     }
 }

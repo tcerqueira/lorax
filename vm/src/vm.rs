@@ -12,7 +12,7 @@ use crate::{
     chunk::Chunk,
     debug::LineInfo,
     enconding::OpDecoder,
-    object::{ObjKind, internal_str::InternalStr, string::StringObj},
+    object::{ObjKind, Object, internal_str::InternalStr, string::StringObj},
     opcode::OpCode,
     storage::Storage,
     value::{Addr, Value, ValueError},
@@ -178,7 +178,7 @@ impl VirtualMachine {
                     let b = b.as_str(&self.storage);
                     a == b
                 }
-                _ => unreachable!("missing branch on equal"),
+                _ => Object::eq(&a, &b),
             },
             (a, b) => a == b,
         };
