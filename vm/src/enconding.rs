@@ -1,17 +1,15 @@
-use std::io::{self, BufRead, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
 
 use thiserror::Error;
 
 pub trait Decode: Sized {
-    fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError>;
+    fn decode<R: Read + ?Sized>(reader: &mut R) -> Result<Self, DecodeError>;
 }
 
 #[derive(Debug, Error)]
 pub enum DecodeError {
     #[error("unknown op code: {0}")]
     UnknownOpCode(u8),
-    #[error("needed {needed} bytes, found {available}")]
-    InsufficientBytes { needed: usize, available: usize },
     #[error("IO error: {0}")]
     IoError(#[from] io::Error),
 }
@@ -21,16 +19,10 @@ pub trait OpDecoder: BufRead + Seek {
     where
         T: Decode,
     {
-        let buf = self.fill_buf()?;
-        if buf.is_empty() {
+        if self.fill_buf()?.is_empty() {
             return Ok(None);
         }
-
-        let mut cursor = buf;
-        let opcode = T::decode(&mut cursor)?;
-        let consumed = buf.len() - cursor.len();
-        self.consume(consumed);
-        Ok(Some(opcode))
+        T::decode(self).map(Some)
     }
 
     #[expect(dead_code)]

@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    io::{self, Write},
+    io::{self, Read, Write},
 };
 
 use crate::{
@@ -38,28 +38,23 @@ pub enum OpCode {
 
 pub type Slot = u8;
 
-fn read<const N: usize>(buf: &mut &[u8]) -> Result<[u8; N], DecodeError> {
-    let Some((head, rest)) = buf.split_first_chunk::<N>() else {
-        return Err(DecodeError::InsufficientBytes {
-            needed: N,
-            available: buf.len(),
-        });
-    };
-    *buf = rest;
-    Ok(*head)
+fn read<R: Read + ?Sized, const N: usize>(reader: &mut R) -> Result<[u8; N], DecodeError> {
+    let mut buf = [0u8; N];
+    reader.read_exact(&mut buf)?;
+    Ok(buf)
 }
 
-fn read_one(buf: &mut &[u8]) -> Result<u8, DecodeError> {
-    read::<1>(buf).map(|[b]| b)
+fn read_one<R: Read + ?Sized>(reader: &mut R) -> Result<u8, DecodeError> {
+    read::<R, 1>(reader).map(|[b]| b)
 }
 
 impl Decode for OpCode {
-    fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError> {
-        let tag = read_one(buf)?;
+    fn decode<R: Read + ?Sized>(reader: &mut R) -> Result<Self, DecodeError> {
+        let tag = read_one(reader)?;
         let op = match tag {
             0x00 => OpCode::NoOp,
             0x01 => OpCode::Return,
-            0x02 => OpCode::Constant(read_one(buf)?),
+            0x02 => OpCode::Constant(read_one(reader)?),
             0x03 => OpCode::Neg,
             0x04 => OpCode::Add,
             0x05 => OpCode::Sub,
@@ -74,12 +69,12 @@ impl Decode for OpCode {
             0x0E => OpCode::Less,
             0x0F => OpCode::Print,
             0x10 => OpCode::Pop,
-            0x11 => OpCode::DefineGlobal(read_one(buf)?),
-            0x12 => OpCode::GetGlobal(read_one(buf)?),
-            0x13 => OpCode::SetGlobal(read_one(buf)?),
-            0x14 => OpCode::GetLocal(read_one(buf)?),
-            0x15 => OpCode::SetLocal(read_one(buf)?),
-            0x16 => OpCode::PopN(read_one(buf)?),
+            0x11 => OpCode::DefineGlobal(read_one(reader)?),
+            0x12 => OpCode::GetGlobal(read_one(reader)?),
+            0x13 => OpCode::SetGlobal(read_one(reader)?),
+            0x14 => OpCode::GetLocal(read_one(reader)?),
+            0x15 => OpCode::SetLocal(read_one(reader)?),
+            0x16 => OpCode::PopN(read_one(reader)?),
             unknown => return Err(DecodeError::UnknownOpCode(unknown)),
         };
         Ok(op)
