@@ -3,10 +3,8 @@ use std::{
     io::{self, Write},
 };
 
-use thiserror::Error;
-
 use crate::{
-    enconding::{Decode, Encode},
+    enconding::{Decode, DecodeError, Encode},
     value::Addr,
 };
 
@@ -41,9 +39,7 @@ pub enum OpCode {
 pub type Slot = u8;
 
 impl Decode for OpCode {
-    type Err = OpDecodeError;
-
-    fn decode(buf: &[u8]) -> Result<(Self, usize), Self::Err> {
+    fn decode(buf: &[u8]) -> Result<(Self, usize), DecodeError> {
         assert!(!buf.is_empty());
         match (buf[0], buf.len()) {
             (0x00, _) => Ok((OpCode::NoOp, 1)),
@@ -70,9 +66,12 @@ impl Decode for OpCode {
             (0x15, 2..) => Ok((OpCode::SetLocal(buf[1]), 2)),
             (0x16, 2..) => Ok((OpCode::PopN(buf[1]), 2)),
             (0x02 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16, few) => {
-                Err(OpDecodeError::insufficient(2, few))
+                Err(DecodeError::InsufficientBytes {
+                    needed: 2,
+                    available: few,
+                })
             }
-            (unknown, _) => Err(OpDecodeError::unknown(unknown)),
+            (unknown, _) => Err(DecodeError::UnknownOpCode(unknown)),
         }
     }
 }
@@ -111,20 +110,3 @@ impl Encode for OpCode {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum OpDecodeError {
-    #[error("unknown op code: {0}")]
-    UnknownOpCode(u8),
-    #[error("needed {needed} bytes, found {available}")]
-    InsufficientBytes { needed: usize, available: usize },
-}
-
-impl OpDecodeError {
-    fn unknown(byte: u8) -> Self {
-        Self::UnknownOpCode(byte)
-    }
-
-    fn insufficient(needed: usize, available: usize) -> Self {
-        Self::InsufficientBytes { needed, available }
-    }
-}
