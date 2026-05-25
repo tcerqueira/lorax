@@ -38,41 +38,51 @@ pub enum OpCode {
 
 pub type Slot = u8;
 
+fn read<const N: usize>(buf: &mut &[u8]) -> Result<[u8; N], DecodeError> {
+    let Some((head, rest)) = buf.split_first_chunk::<N>() else {
+        return Err(DecodeError::InsufficientBytes {
+            needed: N,
+            available: buf.len(),
+        });
+    };
+    *buf = rest;
+    Ok(*head)
+}
+
+fn read_one(buf: &mut &[u8]) -> Result<u8, DecodeError> {
+    read::<1>(buf).map(|[b]| b)
+}
+
 impl Decode for OpCode {
-    fn decode(buf: &[u8]) -> Result<(Self, usize), DecodeError> {
-        assert!(!buf.is_empty());
-        match (buf[0], buf.len()) {
-            (0x00, _) => Ok((OpCode::NoOp, 1)),
-            (0x01, _) => Ok((OpCode::Return, 1)),
-            (0x02, 2..) => Ok((OpCode::Constant(buf[1]), 2)),
-            (0x03, _) => Ok((OpCode::Neg, 1)),
-            (0x04, _) => Ok((OpCode::Add, 1)),
-            (0x05, _) => Ok((OpCode::Sub, 1)),
-            (0x06, _) => Ok((OpCode::Mul, 1)),
-            (0x07, _) => Ok((OpCode::Div, 1)),
-            (0x08, _) => Ok((OpCode::True, 1)),
-            (0x09, _) => Ok((OpCode::False, 1)),
-            (0x0A, _) => Ok((OpCode::Nil, 1)),
-            (0x0B, _) => Ok((OpCode::Not, 1)),
-            (0x0C, _) => Ok((OpCode::Equal, 1)),
-            (0x0D, _) => Ok((OpCode::Greater, 1)),
-            (0x0E, _) => Ok((OpCode::Less, 1)),
-            (0x0F, _) => Ok((OpCode::Print, 1)),
-            (0x10, _) => Ok((OpCode::Pop, 1)),
-            (0x11, 2..) => Ok((OpCode::DefineGlobal(buf[1]), 2)),
-            (0x12, 2..) => Ok((OpCode::GetGlobal(buf[1]), 2)),
-            (0x13, 2..) => Ok((OpCode::SetGlobal(buf[1]), 2)),
-            (0x14, 2..) => Ok((OpCode::GetLocal(buf[1]), 2)),
-            (0x15, 2..) => Ok((OpCode::SetLocal(buf[1]), 2)),
-            (0x16, 2..) => Ok((OpCode::PopN(buf[1]), 2)),
-            (0x02 | 0x11 | 0x12 | 0x13 | 0x14 | 0x15 | 0x16, few) => {
-                Err(DecodeError::InsufficientBytes {
-                    needed: 2,
-                    available: few,
-                })
-            }
-            (unknown, _) => Err(DecodeError::UnknownOpCode(unknown)),
-        }
+    fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError> {
+        let tag = read_one(buf)?;
+        let op = match tag {
+            0x00 => OpCode::NoOp,
+            0x01 => OpCode::Return,
+            0x02 => OpCode::Constant(read_one(buf)?),
+            0x03 => OpCode::Neg,
+            0x04 => OpCode::Add,
+            0x05 => OpCode::Sub,
+            0x06 => OpCode::Mul,
+            0x07 => OpCode::Div,
+            0x08 => OpCode::True,
+            0x09 => OpCode::False,
+            0x0A => OpCode::Nil,
+            0x0B => OpCode::Not,
+            0x0C => OpCode::Equal,
+            0x0D => OpCode::Greater,
+            0x0E => OpCode::Less,
+            0x0F => OpCode::Print,
+            0x10 => OpCode::Pop,
+            0x11 => OpCode::DefineGlobal(read_one(buf)?),
+            0x12 => OpCode::GetGlobal(read_one(buf)?),
+            0x13 => OpCode::SetGlobal(read_one(buf)?),
+            0x14 => OpCode::GetLocal(read_one(buf)?),
+            0x15 => OpCode::SetLocal(read_one(buf)?),
+            0x16 => OpCode::PopN(read_one(buf)?),
+            unknown => return Err(DecodeError::UnknownOpCode(unknown)),
+        };
+        Ok(op)
     }
 }
 
@@ -109,4 +119,3 @@ impl Encode for OpCode {
         }
     }
 }
-

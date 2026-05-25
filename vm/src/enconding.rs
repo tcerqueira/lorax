@@ -3,7 +3,7 @@ use std::io::{self, BufRead, Seek, SeekFrom, Write};
 use thiserror::Error;
 
 pub trait Decode: Sized {
-    fn decode(buf: &[u8]) -> Result<(Self, usize), DecodeError>;
+    fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError>;
 }
 
 #[derive(Debug, Error)]
@@ -26,7 +26,9 @@ pub trait OpDecoder: BufRead + Seek {
             return Ok(None);
         }
 
-        let (opcode, consumed) = T::decode(buf)?;
+        let mut cursor = buf;
+        let opcode = T::decode(&mut cursor)?;
+        let consumed = buf.len() - cursor.len();
         self.consume(consumed);
         Ok(Some(opcode))
     }
