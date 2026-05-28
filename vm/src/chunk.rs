@@ -24,10 +24,19 @@ impl Chunk {
         }
     }
 
+    pub fn current(&self) -> u64 {
+        self.code.len() as u64
+    }
+
     pub fn write(&mut self, instruction: OpCode) {
         self.code
             .encode_op(&instruction)
             .expect("what could go wrong :)");
+    }
+
+    pub fn write_raw(&mut self, offset: u64, buf: &[u8]) {
+        let start = offset as usize;
+        self.code[start..start + buf.len()].copy_from_slice(buf);
     }
 
     pub fn write_with_line(&mut self, line: u32, instruction: OpCode) {

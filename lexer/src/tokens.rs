@@ -117,6 +117,10 @@ impl Token {
     pub fn as_str(&self) -> Cow<'_, str> {
         self.ty().as_str()
     }
+
+    pub fn line(&self) -> u32 {
+        self.span.line_start
+    }
 }
 
 impl Spanned for Token {

@@ -176,7 +176,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     pub fn end(&mut self) {
-        self.emit_op(OpCode::Return);
+        self.emit_op(OpCode::Ret);
     }
 
     pub fn report_err(&self, err: CompileError) {
@@ -217,7 +217,7 @@ impl<'s, 't> Compiler<'s, 't> {
         let addr = self.ident_constant(name);
         self.var_initializer(&ident)?;
         let semi = self.consume(TokenType::Semicolon)?;
-        self.emit_op_and_line(semi.span.line_start, OpCode::DefineGlobal(addr));
+        self.emit_op_and_line(semi.line(), OpCode::DefGlobal(addr));
         Ok(())
     }
 
@@ -237,7 +237,7 @@ impl<'s, 't> Compiler<'s, 't> {
         match self.advance_if(TokenType::Equal)? {
             Some(_) => self.expression(),
             None => {
-                self.emit_op_and_line(ident.span.line_start, OpCode::Nil);
+                self.emit_op_and_line(ident.line(), OpCode::Nil);
                 Ok(())
             }
         }
@@ -249,9 +249,38 @@ impl<'s, 't> Compiler<'s, 't> {
         };
         match tok.ty() {
             TokenType::Print => self.print_stmt(),
+            TokenType::If => self.if_stmt(),
             TokenType::LeftBrace => self.block_stmt(),
             _ => self.expression_stmt(),
         }
+    }
+
+    fn if_stmt(&mut self) -> Result<(), CompileError> {
+        let if_tok = self
+            .consume(TokenType::If)
+            .expect("matched print token before entering this branch");
+        let _ = self
+            .consume(TokenType::LeftParen)
+            .context("expect '(' after 'if'.")?;
+        self.expression()?;
+        let _ = self
+            .consume(TokenType::RightParen)
+            .context("expect ')' after condition.")?;
+
+        let then_jmp = self.emit_jmp_and_line(if_tok.line(), OpCode::JmpIfFalse(0));
+        self.emit_op(OpCode::Pop);
+        self.statement()?;
+
+        let else_jmp = self.emit_jmp(OpCode::Jmp(0));
+        self.patch_jmp(then_jmp);
+        self.emit_op(OpCode::Pop);
+
+        if self.advance_if(TokenType::Else)?.is_some() {
+            self.statement()?;
+        }
+        self.patch_jmp(else_jmp);
+
+        Ok(())
     }
 
     fn print_stmt(&mut self) -> Result<(), CompileError> {
@@ -260,7 +289,7 @@ impl<'s, 't> Compiler<'s, 't> {
             .expect("matched print token before entering this branch");
         self.expression()?;
         self.consume(TokenType::Semicolon)?;
-        self.emit_op_and_line(tok.span.line_start, OpCode::Print);
+        self.emit_op_and_line(tok.line(), OpCode::Print);
         Ok(())
     }
 
@@ -368,7 +397,7 @@ impl<'s, 't> Compiler<'s, 't> {
         let operand = self.parse_bp(r_bp)?;
         self.materialize(operand);
 
-        let line = op.span.line_start;
+        let line = op.line();
         match op.ty() {
             TokenType::Minus => self.emit_op_and_line(line, OpCode::Neg),
             TokenType::Bang => self.emit_op_and_line(line, OpCode::Not),
@@ -404,7 +433,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn literal(&mut self, tok: Token) -> Result<Handle, CompileError> {
-        let line = tok.span.line_start;
+        let line = tok.line();
         match tok.ty() {
             TokenType::True => self.emit_op_and_line(line, OpCode::True),
             TokenType::False => self.emit_op_and_line(line, OpCode::False),
@@ -416,7 +445,7 @@ impl<'s, 't> Compiler<'s, 't> {
 
     fn named_variable(&mut self, tok: Token) -> Result<Handle, CompileError> {
         let name = self.storage.intern(&tok.as_str());
-        let line = tok.span.line_start;
+        let line = tok.line();
         // Locals shadow globals.
         if let Some(slot) = self.scopes.resolve(name) {
             return Ok(Handle::local(slot, line));
@@ -431,7 +460,7 @@ impl<'s, 't> Compiler<'s, 't> {
         let rhs = self.parse_bp(r_bp)?;
         self.materialize(rhs);
 
-        let line = op.span.line_start;
+        let line = op.line();
         #[rustfmt::skip]
         match op.ty() {
             TokenType::Plus => self.emit_op_and_line(line, OpCode::Add),
@@ -533,6 +562,23 @@ impl<'s, 't> Compiler<'s, 't> {
         let addr = self.add_constant(value);
         self.chunk.write_with_line(line, OpCode::Constant(addr));
         addr
+    }
+
+    fn emit_jmp_and_line(&mut self, line: u32, op: OpCode) -> u64 {
+        self.emit_op_and_line(line, op);
+        self.chunk.current()
+    }
+
+    fn emit_jmp(&mut self, op: OpCode) -> u64 {
+        self.emit_op(op);
+        self.chunk.current()
+    }
+
+    fn patch_jmp(&mut self, offset: u64) {
+        let jmp = self.chunk.current() - offset;
+        assert!(jmp <= u16::MAX as u64, "too much code to jump over.");
+        self.chunk
+            .write_raw(offset - 2, &(jmp as u16).to_le_bytes());
     }
 
     fn advance(&mut self) -> Result<Option<Token>, LexingError> {

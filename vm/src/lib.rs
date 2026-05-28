@@ -78,6 +78,10 @@ pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
             reporter.report(&err);
             Err(err.into())
         }
+        Err(VirtualMachineError::Other(err)) => {
+            reporter.report_unspanned(&err);
+            Err(err.into())
+        }
         Ok(()) => Ok(()),
     }
 }

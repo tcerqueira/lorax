@@ -1,10 +1,11 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
-    io::{Cursor, Seek},
+    io::Cursor,
     mem,
     ops::{Add, Div, Mul, Sub},
 };
 
+use anyhow::Context;
 use lasso::Spur;
 use report::error::RuntimeError;
 
@@ -49,7 +50,7 @@ impl VirtualMachine {
 
             let mut make_span = || {
                 chunk
-                    .get_line(pc.stream_position().unwrap() - 1)
+                    .get_line(pc.current_position().unwrap() - 1)
                     .map(LineInfo::to_span)
                     .unwrap_or_default()
             };
@@ -59,7 +60,7 @@ impl VirtualMachine {
 
             match op {
                 OpCode::NoOp => {}
-                OpCode::Return => {
+                OpCode::Ret => {
                     return Ok(());
                 }
                 OpCode::Constant(addr) => {
@@ -105,7 +106,7 @@ impl VirtualMachine {
                 }
                 OpCode::Pop => _ = self.stack.pop(),
                 OpCode::PopN(n) => self.stack.pop_n(n),
-                OpCode::DefineGlobal(addr) => {
+                OpCode::DefGlobal(addr) => {
                     self.with_variable(&chunk, addr, |vm, key, value| {
                         vm.globals.insert(key, value);
                     });
@@ -140,6 +141,16 @@ impl VirtualMachine {
                     let v = self.stack.top().clone();
                     *self.stack.get_mut(slot) = v;
                 }
+                OpCode::JmpIfFalse(offset) => {
+                    let condition = self.stack.top().is_falsey();
+                    if condition {
+                        pc.relative_jump(offset as i64)
+                            .with_context(|| "could not jump to offset {offset} {e}")?;
+                    }
+                }
+                OpCode::Jmp(offset) => pc
+                    .relative_jump(offset as i64)
+                    .with_context(|| "could not jump to offset {offset} {e}")?,
             }
         }
         Ok(())

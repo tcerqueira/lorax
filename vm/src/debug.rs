@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::fmt::Display;
 use std::ops::Range;
 use std::{fmt, io::Cursor};
 
@@ -84,18 +85,20 @@ impl<'a, 'f> Disassembler<'a, 'f> {
     }
 }
 
+fn write_args1(f: &mut fmt::Formatter<'_>, verb: &'static str, arg: impl Display) -> fmt::Result {
+    write!(f, "{:<16} [{arg:<03}]", verb)
+}
+
 impl OpCode {
     pub fn disassemble(&self, f: &mut fmt::Formatter<'_>, chunk: &Chunk) -> fmt::Result {
         let write_addr = |f: &mut fmt::Formatter<'_>, verb: &'static str, addr: &Addr| {
             let constant = &chunk.constants[*addr as usize];
             write!(f, "{:<16} {:<4}[{addr:<03}]", verb, constant)
         };
-        let write_args1 = |f: &mut fmt::Formatter<'_>, verb: &'static str, arg: &u8| {
-            write!(f, "{:<16} [{arg:<03}]", verb)
-        };
+
         match self {
             OpCode::NoOp => write!(f, "NOOP"),
-            OpCode::Return => write!(f, "OP_RETURN"),
+            OpCode::Ret => write!(f, "OP_RETURN"),
             OpCode::Constant(addr) => write_addr(f, "OP_CONSTANT", addr),
             OpCode::Neg => write!(f, "OP_NEG"),
             OpCode::Add => write!(f, "OP_ADD"),
@@ -111,12 +114,14 @@ impl OpCode {
             OpCode::Less => write!(f, "OP_LESS"),
             OpCode::Print => write!(f, "OP_PRINT"),
             OpCode::Pop => write!(f, "OP_POP"),
-            OpCode::DefineGlobal(addr) => write_addr(f, "OP_DEFINE_GLOBAL", addr),
+            OpCode::DefGlobal(addr) => write_addr(f, "OP_DEFINE_GLOBAL", addr),
             OpCode::GetGlobal(addr) => write_addr(f, "OP_GET_GLOBAL", addr),
             OpCode::SetGlobal(addr) => write_addr(f, "OP_SET_GLOBAL", addr),
             OpCode::GetLocal(slot) => write_args1(f, "OP_GET_LOCAL", slot),
             OpCode::SetLocal(slot) => write_args1(f, "OP_SET_LOCAL", slot),
             OpCode::PopN(n) => write_args1(f, "OP_POPN", n),
+            OpCode::JmpIfFalse(offset) => write_args1(f, "OP_JMP_IF_FALSE", offset),
+            OpCode::Jmp(offset) => write_args1(f, "OP_JMP", offset),
         }
     }
 }

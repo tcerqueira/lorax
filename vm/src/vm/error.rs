@@ -9,4 +9,6 @@ pub enum VirtualMachineError {
     Decode(#[from] DecodeError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

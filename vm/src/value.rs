@@ -49,7 +49,7 @@ impl Value {
         !match self {
             Self::Boolean(b) => *b,
             Self::Nil => false,
-            _ => false,
+            _ => true,
         }
     }
 

@@ -28,7 +28,7 @@ mod assignment {
 
 mod block {
     rlox::lox_tests!("block", [
-        #[ignore = "VM not yet implemented: if"] empty,
+        empty,
         scope,
     ]);
 }
@@ -179,16 +179,16 @@ mod function {
 
 mod if_stmt {
     rlox::lox_tests!("if", [
-        #[ignore = "VM not yet implemented"] class_in_else,
-        #[ignore = "VM not yet implemented"] class_in_then,
-        #[ignore = "VM not yet implemented"] dangling_else,
-        #[ignore = "VM not yet implemented"] r#else,
-        #[ignore = "VM not yet implemented"] fun_in_else,
-        #[ignore = "VM not yet implemented"] fun_in_then,
-        #[ignore = "VM not yet implemented"] r#if,
-        #[ignore = "VM not yet implemented"] truth,
-        #[ignore = "VM not yet implemented"] var_in_else,
-        #[ignore = "VM not yet implemented"] var_in_then,
+        #[ignore = "VM not yet implemented: classes"] class_in_else,
+        #[ignore = "VM not yet implemented: classes"] class_in_then,
+        dangling_else,
+        r#else,
+        #[ignore = "VM not yet implemented: functions"] fun_in_else,
+        #[ignore = "VM not yet implemented: functions"] fun_in_then,
+        r#if,
+        truth,
+        var_in_else,
+        var_in_then,
     ]);
 }
 
@@ -401,7 +401,7 @@ mod variable {
         undefined_global,
         undefined_local,
         uninitialized,
-        #[ignore = "VM not yet implemented: if"] unreached_undefined,
+        unreached_undefined,
         use_false_as_var,
         use_global_in_initializer,
         #[ignore = "lorax deviates: initializer can reference previous binding"] use_local_in_initializer,
