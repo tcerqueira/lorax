@@ -1,6 +1,6 @@
 use std::slice;
 
-use crate::{opcode::Slot, value::Value};
+use crate::{enconding::Slot, value::Value};
 
 // PERF: all accessors (`top`, `top_mut`, `peek`, `peek_mut`, `get`, `get_mut`,
 // `pop`) bounds-check on every dispatch. The compiler guarantees the indices

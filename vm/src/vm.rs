@@ -12,9 +12,8 @@ use report::error::RuntimeError;
 use crate::{
     chunk::Chunk,
     debug::LineInfo,
-    enconding::OpDecoder,
+    enconding::{OpCode, OpDecoder},
     object::{Object, string::LoxString},
-    opcode::OpCode,
     storage::Storage,
     value::{Addr, Value, ValueError},
     vm::{error::VirtualMachineError, stack::Stack},

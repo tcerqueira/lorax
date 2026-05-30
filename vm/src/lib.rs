@@ -22,9 +22,8 @@ use crate::{
 pub mod chunk;
 pub mod compiler;
 pub(crate) mod debug;
-pub(crate) mod enconding;
+pub mod enconding;
 pub mod object;
-pub mod opcode;
 pub mod storage;
 pub mod value;
 pub mod vm;

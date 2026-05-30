@@ -1,7 +1,7 @@
 use lasso::Spur;
 use thiserror::Error;
 
-use crate::opcode::Slot;
+use crate::enconding::Slot;
 
 /// Maximum number of locals live at once. Capped at `u8::MAX` to match the
 /// chunk-constant limit and let any scope's pop count fit in a single `PopN`.

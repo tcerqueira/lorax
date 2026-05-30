@@ -12,7 +12,7 @@ use report::{Span, error::LexingError};
 use crate::{
     chunk::Chunk,
     compiler::{error::CompileError, scopes::Scopes},
-    opcode::{OpCode, Slot},
+    enconding::{OpCode, Slot},
     storage::Storage,
     value::{Addr, Value},
 };

@@ -6,8 +6,7 @@ use std::{fmt, io::Cursor};
 use report::Span;
 
 use crate::chunk::Chunk;
-use crate::enconding::OpDecoder;
-use crate::opcode::OpCode;
+use crate::enconding::{OpCode, OpDecoder};
 use crate::value::Addr;
 
 pub struct LineInfo {

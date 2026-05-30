@@ -2,8 +2,7 @@ use std::fmt::{self, Debug};
 
 use crate::{
     debug::{Disassembler, LineInfo},
-    enconding::OpEncoder,
-    opcode::OpCode,
+    enconding::{OpCode, OpEncoder},
     value::{Addr, Value},
 };
 
