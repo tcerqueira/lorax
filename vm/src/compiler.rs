@@ -97,15 +97,15 @@ fn postfix_bp(_tok: &TokenType) -> Option<u8> {
 fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
     Some(match tok {
         TokenType::Equal => (2, 1),
-        // TokenType::Or => (3, 4),
-        // TokenType::And => (5, 6),
+        TokenType::Or => (3, 4),
+        TokenType::And => (5, 6),
         TokenType::EqualEqual | TokenType::BangEqual => (7, 8),
         TokenType::Less | TokenType::LessEqual | TokenType::Greater | TokenType::GreaterEqual => {
             (9, 10)
         }
         TokenType::Plus | TokenType::Minus => (11, 12),
         TokenType::Star | TokenType::Slash => (13, 14),
-        // TokenType::Dot | TokenType::LeftParen => (16, 15),
+        // TokenType::Dot => (15, 16),
         _ => return None,
     })
 }
@@ -116,6 +116,7 @@ fn infix_bp(tok: &TokenType) -> Option<(u8, u8)> {
 /// compilation produced an addressable location that hasn't been read or
 /// written yet; the next step (read in `materialize` or assign in `store`)
 /// emits the appropriate get/set op.
+#[must_use = "you should forward or materialize the Handle"]
 #[derive(Debug, Clone, Copy)]
 enum Handle {
     Value,
@@ -377,6 +378,8 @@ impl<'s, 't> Compiler<'s, 't> {
             | TokenType::Less
             | TokenType::LessEqual => self.binary(tok, lhs),
             TokenType::Equal => self.assignment(tok, lhs),
+            TokenType::And => self.and(tok, lhs),
+            TokenType::Or => self.or(tok, lhs),
             _ => Err(ParsingError::expected(&tok, "expression", &tok).into()),
         }
     }
@@ -484,6 +487,37 @@ impl<'s, 't> Compiler<'s, 't> {
             }
             _ => panic!("unexpected binary token: {op}"),
         };
+        Ok(Handle::Value)
+    }
+
+    fn and(&mut self, tok: Token, lhs: Handle) -> Result<Handle, CompileError> {
+        let (_l_bp, r_bp) = infix_bp(tok.ty()).expect("expected infix op token");
+        self.materialize(lhs);
+
+        let short_circuit = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
+        self.emit_op_and_line(tok.line(), OpCode::Pop);
+
+        let rhs = self.parse_bp(r_bp)?;
+        self.materialize(rhs);
+        self.patch_jmp(short_circuit);
+
+        Ok(Handle::Value)
+    }
+
+    fn or(&mut self, tok: Token, lhs: Handle) -> Result<Handle, CompileError> {
+        let (_l_bp, r_bp) = infix_bp(tok.ty()).expect("expected infix op token");
+        self.materialize(lhs);
+
+        let else_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
+        let end_jmp = self.emit_jmp_and_line(tok.line(), OpCode::Jmp(0));
+
+        self.patch_jmp(else_jmp);
+        self.emit_op_and_line(tok.line(), OpCode::Pop);
+
+        let rhs = self.parse_bp(r_bp)?;
+        self.materialize(rhs);
+        self.patch_jmp(end_jmp);
+
         Ok(Handle::Value)
     }
 
@@ -734,6 +768,31 @@ mod tests {
     #[test]
     fn nested_block_shadow() {
         compile("{ var a = 1; { var a = a + 1; print a; } print a; }");
+    }
+
+    #[test]
+    fn if_without_else() {
+        compile("if (true) print 1;");
+    }
+
+    #[test]
+    fn if_else() {
+        compile("if (1 < 2) print 1; else print 2;");
+    }
+
+    #[test]
+    fn logical_and() {
+        compile("true and false;");
+    }
+
+    #[test]
+    fn logical_or() {
+        compile("nil or 1;");
+    }
+
+    #[test]
+    fn logical_and_or_mixed() {
+        compile("1 and 2 or 3 and nil;");
     }
 
     #[test]
