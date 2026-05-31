@@ -69,7 +69,8 @@ Key flow in `tree-walk/src/lib.rs`:
 ### VM design patterns
 
 - **Single-pass Pratt parser → bytecode** (`vm/src/compiler.rs`): no intermediate AST. `parse_bp` recurses by binding power; prefix/infix/postfix dispatch tables (`prefix_bp`/`infix_bp`/`postfix_bp`) gate the loop. Errors trigger `synchronize()` to skip to the next statement boundary so a single bad token doesn't poison the whole compile.
-- **`Handle` lvalue/rvalue threading**: `parse_*` methods return `Handle::Value` (already on the stack) or `Handle::Place` (deferred — emit `SetGlobal`/etc. on materialize). This is how `=` and global stores will be wired without a second pass.
+- **`Handle` lvalue/rvalue threading**: `parse_*` methods return `Handle::Value` (already on the stack) or `Handle::Place` (a deferred global/local lvalue). `materialize` turns a `Place` into a read (`GetGlobal`/`GetLocal`); `store` (driven by `assignment` on `=`) turns it into a write (`SetGlobal`/`SetLocal`). This wires `=` and variable stores without a second pass.
+- **Jump backpatching** (`vm/src/compiler.rs`): forward jumps (`Jmp`/`JmpIfFalse`) are emitted with a placeholder `0` offset and fixed up by `patch_jmp` once the target is known; backward jumps (`while`) use `emit_loop` to encode a `Loop` op with the already-known negative offset. The VM's PC seeks via `relative_jump`.
 - **Encoded opcodes** (`vm/src/enconding.rs`): `OpCode` is `#[repr(u8)]` with inline operands; `Encode`/`Decode` traits serialize to/from the chunk's byte buffer. Adding an opcode means updating both arms plus the VM's `match`.
 - **Custom heap** (`vm/src/storage.rs`, `vm/src/object.rs`): `Storage` owns an `ObjectPool` (intrusive `SinglyLinkedList` of type-erased `UnsafeRef<Object>`) plus a `lasso::Rodeo` string interner. `Object` is a `#[repr(C)]` header with a `kind` tag; the concrete type (`LoxString`) is downcast unsafely from the tag. `OwnedObject::drop` dispatches on `kind` to free the correct DST layout — `Box<Object>` alone can't, because the alloc is oversized.
 - **`Value::Symbol(Spur)` for identifiers, `LoxString` for runtime strings**: identifiers are interned in `Storage`'s `Rodeo` and live inline in `Value` as `Spur` keys (cheap equality, used for globals lookup); runtime strings (e.g. concat results) are heap `LoxString` reached through `Value::Object`. The VM's `equal` op routes through `Value::as_str` so a `Symbol` and a `LoxString` with the same contents compare equal.
@@ -96,7 +97,16 @@ Key flow in `tree-walk/src/lib.rs`:
 
 ### VM status
 
-Walking the book's "Compiling Expressions" / "Global Variables" chapters. Implemented: literals (`true`/`false`/`nil`/numbers/strings), unary `-`/`!`, all arithmetic/comparison/equality ops, string concatenation, `print`, expression statements, global `var` declarations and reads, error reporting + `synchronize()`. **`SetGlobal` (assignment) is still `todo!()`** — and there are no locals, control flow, functions, or classes yet, so the VM cannot run most programs in `tests/sources/`.
+Through the book's "Compiling Expressions" → "Jumping Back and Forth" chapters (ch. 17–23). Implemented:
+
+- Literals (`true`/`false`/`nil`/numbers/strings), unary `-`/`!`, all arithmetic/comparison/equality ops, string concatenation
+- `print` and expression statements
+- Global `var` declarations, reads, and assignment (`DefGlobal`/`GetGlobal`/`SetGlobal`)
+- Local variables with block scoping and shadowing (`GetLocal`/`SetLocal`, scope-exit `PopN`)
+- Control flow: `if`/`else`, logical `and`/`or` (short-circuit), `while` loops (`Jmp`/`JmpIfFalse`/`Loop` with backpatching)
+- Error reporting + `synchronize()`
+
+Not yet: `for` loops, functions/calls, closures, and classes — so the VM still can't run most programs in `tests/sources/`, and the `tests/vm.rs` shadow keeps every case `#[ignore]`.
 
 ## Toolchain
 
