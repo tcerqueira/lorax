@@ -149,7 +149,10 @@ impl VirtualMachine {
                 }
                 OpCode::Jmp(offset) => pc
                     .relative_jump(offset as i64)
-                    .with_context(|| "could not jump to offset {offset} {e}")?,
+                    .with_context(|| format!("could not jump to offset {offset}"))?,
+                OpCode::Loop(offset) => pc
+                    .relative_jump(-(offset as i64))
+                    .with_context(|| format!("could not loop to offset {}", -(offset as i64)))?,
             }
         }
         Ok(())

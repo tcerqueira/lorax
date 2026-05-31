@@ -85,7 +85,7 @@ impl<'a, 'f> Disassembler<'a, 'f> {
 }
 
 fn write_args1(f: &mut fmt::Formatter<'_>, verb: &'static str, arg: impl Display) -> fmt::Result {
-    write!(f, "{:<16} [{arg:<03}]", verb)
+    write!(f, "{:<16} [{arg:<05}]", verb)
 }
 
 impl OpCode {
@@ -121,6 +121,7 @@ impl OpCode {
             OpCode::PopN(n) => write_args1(f, "OP_POPN", n),
             OpCode::JmpIfFalse(offset) => write_args1(f, "OP_JMP_IF_FALSE", offset),
             OpCode::Jmp(offset) => write_args1(f, "OP_JMP", offset),
+            OpCode::Loop(offset) => write_args1(f, "OP_LOOP", offset),
         }
     }
 }

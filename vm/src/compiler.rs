@@ -251,24 +251,23 @@ impl<'s, 't> Compiler<'s, 't> {
         match tok.ty() {
             TokenType::Print => self.print_stmt(),
             TokenType::If => self.if_stmt(),
+            TokenType::While => self.while_stmt(),
             TokenType::LeftBrace => self.block_stmt(),
             _ => self.expression_stmt(),
         }
     }
 
     fn if_stmt(&mut self) -> Result<(), CompileError> {
-        let if_tok = self
-            .consume(TokenType::If)
-            .expect("matched print token before entering this branch");
-        let _ = self
-            .consume(TokenType::LeftParen)
+        self.consume(TokenType::If)
+            .expect("matched token before entering this branch");
+        self.consume(TokenType::LeftParen)
             .context("expect '(' after 'if'.")?;
         self.expression()?;
-        let _ = self
+        let tok = self
             .consume(TokenType::RightParen)
             .context("expect ')' after condition.")?;
 
-        let then_jmp = self.emit_jmp_and_line(if_tok.line(), OpCode::JmpIfFalse(0));
+        let then_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
         self.emit_op(OpCode::Pop);
         self.statement()?;
 
@@ -284,12 +283,34 @@ impl<'s, 't> Compiler<'s, 't> {
         Ok(())
     }
 
-    fn print_stmt(&mut self) -> Result<(), CompileError> {
-        let tok = self
-            .consume(TokenType::Print)
-            .expect("matched print token before entering this branch");
+    fn while_stmt(&mut self) -> Result<(), CompileError> {
+        let loop_start = self.chunk.current();
+        self.consume(TokenType::While)
+            .expect("matched token before entering this branch");
+        self.consume(TokenType::LeftParen)
+            .context("Expect '(' after 'while'.")?;
         self.expression()?;
-        self.consume(TokenType::Semicolon)?;
+        let tok = self
+            .consume(TokenType::RightParen)
+            .context("Expect ')' after 'condition'.")?;
+
+        let exit_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
+        self.emit_op_and_line(tok.line(), OpCode::Pop);
+        self.statement()?;
+        self.emit_loop(loop_start);
+
+        self.patch_jmp(exit_jmp);
+        self.emit_op(OpCode::Pop);
+        Ok(())
+    }
+
+    fn print_stmt(&mut self) -> Result<(), CompileError> {
+        self.consume(TokenType::Print)
+            .expect("matched token before entering this branch");
+        self.expression()?;
+        let tok = self
+            .consume(TokenType::Semicolon)
+            .context("Missing semicolon")?;
         self.emit_op_and_line(tok.line(), OpCode::Print);
         Ok(())
     }
@@ -606,6 +627,12 @@ impl<'s, 't> Compiler<'s, 't> {
     fn emit_jmp(&mut self, op: OpCode) -> u64 {
         self.emit_op(op);
         self.chunk.current()
+    }
+
+    fn emit_loop(&mut self, loop_start: u64) {
+        let offset = self.chunk.current() - loop_start + 3; // sizeof(OP_LOOP) = 3
+        assert!(offset <= u16::MAX as u64, "Loop body too large.");
+        self.emit_op(OpCode::Loop(offset as u16));
     }
 
     fn patch_jmp(&mut self, offset: u64) {

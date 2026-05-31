@@ -33,6 +33,7 @@ pub enum OpCode {
     PopN(u8) = 0x16,
     JmpIfFalse(Offset) = 0x17,
     Jmp(Offset) = 0x18,
+    Loop(Offset) = 0x19,
 }
 
 pub type Slot = u8;
@@ -127,6 +128,7 @@ impl Decode for OpCode {
             0x16 => OpCode::PopN(read_one(reader)?),
             0x17 => OpCode::JmpIfFalse(Offset::from_le_bytes(read::<2, _>(reader)?)),
             0x18 => OpCode::Jmp(Offset::from_le_bytes(read::<2, _>(reader)?)),
+            0x19 => OpCode::Loop(Offset::from_le_bytes(read::<2, _>(reader)?)),
             unknown => return Err(DecodeError::UnknownOpCode(unknown)),
         };
         Ok(op)
@@ -170,6 +172,10 @@ impl Encode for OpCode {
             OpCode::Jmp(offset) => {
                 let buf = offset.to_le_bytes();
                 write(&[0x18, buf[0], buf[1]])
+            }
+            OpCode::Loop(offset) => {
+                let buf = offset.to_le_bytes();
+                write(&[0x19, buf[0], buf[1]])
             }
         }
     }
