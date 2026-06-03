@@ -1,8 +1,5 @@
-#![feature(formatting_options)]
-#![feature(error_iter)]
 #![feature(ptr_metadata)]
 #![feature(arbitrary_self_types)]
-#![feature(if_let_guard)]
 
 use std::{
     fs,
