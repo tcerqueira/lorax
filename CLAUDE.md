@@ -110,5 +110,5 @@ Not yet: `for` loops, functions/calls, closures, and classes — so the VM still
 
 ## Toolchain
 
-- **Nightly Rust** required (`rust-toolchain.toml`). Features in use across crates: `formatting_options`, `error_iter`; VM additionally uses `ptr_metadata`, `arbitrary_self_types`, `if_let_guard`.
+- **Nightly Rust** required (`rust-toolchain.toml`). The only unstable features in use are `ptr_metadata` and `arbitrary_self_types`, both in the `vm` crate.
 - **Edition 2024**.
