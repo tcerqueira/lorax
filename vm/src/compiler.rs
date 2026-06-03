@@ -8,6 +8,7 @@ use lexer::{
 };
 use report::{Reporter, error::ParsingError};
 use report::{Span, error::LexingError};
+use scopeguard::ScopeGuard;
 
 use crate::{
     chunk::Chunk,
@@ -252,6 +253,7 @@ impl<'s, 't> Compiler<'s, 't> {
             TokenType::Print => self.print_stmt(),
             TokenType::If => self.if_stmt(),
             TokenType::While => self.while_stmt(),
+            TokenType::For => self.for_stmt(),
             TokenType::LeftBrace => self.block_stmt(),
             _ => self.expression_stmt(),
         }
@@ -268,12 +270,12 @@ impl<'s, 't> Compiler<'s, 't> {
             .context("expect ')' after condition.")?;
 
         let then_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
-        self.emit_op(OpCode::Pop);
+        self.emit_pops(1);
         self.statement()?;
 
         let else_jmp = self.emit_jmp(OpCode::Jmp(0));
         self.patch_jmp(then_jmp);
-        self.emit_op(OpCode::Pop);
+        self.emit_pops(1);
 
         if self.advance_if(TokenType::Else)?.is_some() {
             self.statement()?;
@@ -300,7 +302,62 @@ impl<'s, 't> Compiler<'s, 't> {
         self.emit_loop(loop_start);
 
         self.patch_jmp(exit_jmp);
-        self.emit_op(OpCode::Pop);
+        self.emit_pops(1);
+        Ok(())
+    }
+
+    fn for_stmt(&mut self) -> Result<(), CompileError> {
+        let mut this = self.begin_scope();
+        this.consume(TokenType::For)
+            .expect("matched token before entering this branch");
+        this.consume(TokenType::LeftParen)
+            .context("Expect '(' after 'for'.")?;
+
+        match this
+            .peek()?
+            .context("Unexpected EOF in for initializer.")?
+            .ty()
+        {
+            TokenType::Semicolon => {
+                this.consume(TokenType::Semicolon)?;
+            }
+            TokenType::Var => this.var_decl()?,
+            _ => this.expression_stmt()?,
+        };
+
+        let mut loop_start = this.chunk.current();
+        let exit_jmp = if this.advance_if(TokenType::Semicolon)?.is_none() {
+            this.expression()?;
+            let tok = this
+                .consume(TokenType::Semicolon)
+                .context("Expect ';' after a loop condition.")?;
+            let exit_jmp = this.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
+            this.emit_pops(1);
+            Some(exit_jmp)
+        } else {
+            None
+        };
+
+        if this.advance_if(TokenType::RightParen)?.is_none() {
+            let body_jmp = this.emit_jmp(OpCode::Jmp(0));
+            let inc_start = this.chunk.current();
+            this.expression()?;
+            this.emit_pops(1);
+            this.consume(TokenType::RightParen)
+                .context("Expect ')' after for clauses.")?;
+
+            this.emit_loop(loop_start);
+            loop_start = inc_start;
+            this.patch_jmp(body_jmp);
+        }
+
+        this.statement()?;
+        this.emit_loop(loop_start);
+
+        if let Some(exit_jmp) = exit_jmp {
+            this.patch_jmp(exit_jmp);
+            this.emit_pops(1);
+        }
         Ok(())
     }
 
@@ -318,9 +375,8 @@ impl<'s, 't> Compiler<'s, 't> {
     fn block_stmt(&mut self) -> Result<(), CompileError> {
         self.consume(TokenType::LeftBrace)
             .expect("matched left brace before entering this branch");
-        self.begin_scope();
-        self.block()?;
-        self.end_scope();
+        let mut this = self.begin_scope();
+        this.block()?;
         Ok(())
     }
 
@@ -337,7 +393,7 @@ impl<'s, 't> Compiler<'s, 't> {
     fn expression_stmt(&mut self) -> Result<(), CompileError> {
         self.expression()?;
         self.consume(TokenType::Semicolon)?;
-        self.emit_op(OpCode::Pop);
+        self.emit_pops(1);
         Ok(())
     }
 
@@ -580,13 +636,15 @@ impl<'s, 't> Compiler<'s, 't> {
         self.add_constant(Value::symbol(name))
     }
 
-    fn begin_scope(&mut self) {
+    #[must_use]
+    fn begin_scope<'c>(
+        &'c mut self,
+    ) -> ScopeGuard<&'c mut Compiler<'s, 't>, impl FnOnce(&'c mut Compiler<'s, 't>)> {
         self.scopes.enter();
-    }
-
-    fn end_scope(&mut self) {
-        let pop_count = self.scopes.exit();
-        self.emit_pops(pop_count);
+        scopeguard::guard(self, |this| {
+            let pop_count = this.scopes.exit();
+            this.emit_pops(pop_count);
+        })
     }
 
     fn emit_pops(&mut self, count: usize) {
@@ -820,6 +878,36 @@ mod tests {
     #[test]
     fn logical_and_or_mixed() {
         compile("1 and 2 or 3 and nil;");
+    }
+
+    #[test]
+    fn for_full() {
+        compile("for (var i = 0; i < 3; i = i + 1) { print i; }");
+    }
+
+    #[test]
+    fn for_no_initializer() {
+        compile("var i = 0; for (; i < 3; i = i + 1) print i;");
+    }
+
+    #[test]
+    fn for_no_condition() {
+        compile("for (var i = 0;; i = i + 1) print i;");
+    }
+
+    #[test]
+    fn for_no_increment() {
+        compile("for (var i = 0; i < 3;) { print i; i = i + 1; }");
+    }
+
+    #[test]
+    fn for_empty_clauses() {
+        compile("for (;;) print 1;");
+    }
+
+    #[test]
+    fn for_nested() {
+        compile("for (var i = 0; i < 2; i = i + 1) for (var j = 0; j < 2; j = j + 1) print i + j;");
     }
 
     #[test]

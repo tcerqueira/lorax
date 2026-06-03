@@ -262,6 +262,7 @@ dependencies = [
  "lasso",
  "lexer",
  "report",
+ "scopeguard",
  "slice-dst",
  "thiserror",
 ]
