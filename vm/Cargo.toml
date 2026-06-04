@@ -13,3 +13,5 @@ slice-dst = "1.5"
 erasable = "1.3"
 lasso = "0.7"
 scopeguard = "1.2"
+serde = { version = "1.0.228", features = ["derive"] }
+postcard = { version = "1.1.3", features = ["use-std"] }

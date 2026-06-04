@@ -4,11 +4,13 @@ use std::ops::Range;
 use std::{fmt, io::Cursor};
 
 use report::Span;
+use serde::{Deserialize, Serialize};
 
 use crate::chunk::Chunk;
 use crate::enconding::{OpCode, OpDecoder};
 use crate::value::Addr;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LineInfo {
     pub line: u32,
     pub byte_range: Range<u64>,

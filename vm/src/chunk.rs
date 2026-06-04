@@ -6,9 +6,11 @@ use crate::{
     value::{Addr, Value},
 };
 
+mod serde;
+pub use self::serde::ChunkIoError;
+
 #[derive(Default)]
 pub struct Chunk {
-    // TODO: make it generic over Read (?)
     pub(crate) code: Vec<u8>,
     pub(crate) constants: Vec<Value>,
     pub(crate) lines: Vec<LineInfo>,
