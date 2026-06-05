@@ -15,7 +15,7 @@ use thiserror::Error;
 
 use crate::chunk::Chunk;
 use crate::object::{ObjKind, string::LoxString};
-use crate::storage::Storage;
+use crate::storage::{Storage, WithStorage};
 use crate::value::Value;
 
 #[derive(Debug, Error)]
@@ -56,9 +56,6 @@ impl Chunk {
         Ok(ChunkSeed(storage).deserialize(&mut de)?)
     }
 }
-
-/// A borrowed value paired with the `Storage` needed to render its strings.
-struct WithStorage<'a, T: ?Sized>(&'a T, &'a Storage);
 
 /// Serializes a byte slice as one opaque blob instead of a `u8` sequence.
 struct Bytes<'a>(&'a [u8]);

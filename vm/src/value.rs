@@ -10,7 +10,7 @@ use lasso::Spur;
 
 use crate::{
     object::{ObjKind, Object},
-    storage::Storage,
+    storage::{Storage, WithStorage},
 };
 
 pub struct ValueError;
@@ -175,6 +175,16 @@ impl Display for Value {
             Value::Number(n) => write!(f, "{n}"),
             Value::Symbol(key) => write!(f, "Symbol({})", key.into_inner()),
             Value::Object(obj) => obj.display_fmt(f),
+        }
+    }
+}
+
+impl Display for WithStorage<'_, Value> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Value::Symbol(key) => write!(f, "{}", self.1.resolve(*key)),
+            Value::Object(obj) => WithStorage(obj, self.1).fmt(f),
+            _ => Display::fmt(&self.0, f),
         }
     }
 }

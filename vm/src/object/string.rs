@@ -9,7 +9,7 @@ use std::{
 use erasable::{Erasable, ErasedPtr};
 use slice_dst::{AllocSliceDst, SliceDst};
 
-use crate::object::{Object, ObjectKind};
+use crate::object::{Object, ObjectType};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl LoxString {
 // SAFETY: `LoxString` is `#[repr(C)]` with `Object` (`obj`) as its first
 // field, so an `Object` header at offset 0 is layout-compatible. Construction
 // goes through `Self::boxed`, which sets `obj.kind = ObjKind::String`.
-unsafe impl ObjectKind for LoxString {}
+unsafe impl ObjectType for LoxString {}
 
 // SAFETY: `layout_for(len)` produces the exact layout written by `boxed`'s
 // initializer, and `retype` is a pure pointer cast as required.

@@ -1,7 +1,10 @@
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
 use lasso::{Rodeo, Spur};
 
-use crate::object::{Object, ObjectAdapter, ObjectKind, OwnedObject};
+use crate::object::{Object, ObjectAdapter, ObjectType, OwnedObject};
+
+/// A borrowed value paired with the `Storage` needed to render its objects.
+pub struct WithStorage<'a, T: ?Sized>(pub &'a T, pub &'a Storage);
 
 /// Owns the runtime heap (object pool) and the string interner.
 #[derive(Default)]
@@ -23,7 +26,7 @@ impl Storage {
         self.strings.resolve(&key)
     }
 
-    pub fn add_obj<T: ObjectKind + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
+    pub fn add_obj<T: ObjectType + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
         self.heap.add(obj)
     }
 }
@@ -36,7 +39,7 @@ impl ObjectPool {
         Self::default()
     }
 
-    pub fn add<T: ObjectKind + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
+    pub fn add<T: ObjectType + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
         let raw = obj.upcast().into_raw();
         // SAFETY: `raw` is a unique, non-null owning pointer just produced by
         // `OwnedObject::into_raw`. Ownership transfers to the `UnsafeRef`,

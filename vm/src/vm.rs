@@ -14,7 +14,7 @@ use crate::{
     debug::LineInfo,
     enconding::{OpCode, OpDecoder},
     object::{Object, string::LoxString},
-    storage::Storage,
+    storage::{Storage, WithStorage},
     value::{Addr, Value, ValueError},
     vm::{error::VirtualMachineError, stack::Stack},
 };
@@ -97,11 +97,7 @@ impl VirtualMachine {
                 OpCode::Less => self.binary_op(Value::less).map_err(invalid_operand_err)?,
                 OpCode::Print => {
                     let v = self.stack.pop();
-                    if v.is_str() {
-                        println!("{}", v.as_str(&self.storage));
-                    } else {
-                        println!("{v}");
-                    }
+                    println!("{}", WithStorage(&v, self.storage()));
                 }
                 OpCode::Pop => _ = self.stack.pop(),
                 OpCode::PopN(n) => self.stack.pop_n(n),

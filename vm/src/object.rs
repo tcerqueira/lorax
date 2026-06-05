@@ -2,14 +2,18 @@ use std::{
     fmt::{self, Debug, Display, Formatter},
     mem,
     ops::Deref,
-    ptr::NonNull,
+    ptr::{self, NonNull},
 };
 
 use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
-use crate::object::string::LoxString;
+use crate::{
+    object::{function::LoxFunction, string::LoxString},
+    storage::WithStorage,
+};
 
+pub mod function;
 pub mod string;
 
 /// A concrete object kind that can be stored behind an [`Object`] header.
@@ -20,7 +24,7 @@ pub mod string;
 /// padding before it, and its embedded `Object`'s `kind` must accurately
 /// describe the dynamic layout (set during construction). Implementor must
 /// also implement [`Erasable`] so a thin pointer can be reconstituted.
-pub unsafe trait ObjectKind: Erasable {
+pub unsafe trait ObjectType: Erasable {
     /// Take ownership of a `Box<Self>` as an [`OwnedObject`].
     fn upcast(self: Box<Self>) -> OwnedObject {
         let raw = Box::into_raw(self);
@@ -45,6 +49,7 @@ intrusive_adapter!(pub ObjectAdapter = UnsafeRef<Object>: Object { link => Singl
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjKind {
     String,
+    Function,
 }
 
 impl Object {
@@ -55,12 +60,19 @@ impl Object {
         }
     }
 
+    pub fn function() -> Self {
+        Self {
+            kind: ObjKind::Function,
+            link: SinglyLinkedListLink::new(),
+        }
+    }
+
     /// Downcast a shared reference to a concrete kind.
     ///
     /// # Safety
     ///
     /// The Object's dynamic kind must be `T`.
-    pub unsafe fn downcast_ref<T: ObjectKind + ?Sized>(self: &UnsafeRef<Self>) -> &T {
+    pub unsafe fn downcast_ref<T: ObjectType + ?Sized>(self: &UnsafeRef<Self>) -> &T {
         // SAFETY: caller upholds the kind invariant. `UnsafeRef::as_ptr` yields
         // the original heap pointer with its full provenance (set at the alloc
         // site), so `unerase`'s NonNull is a valid `NonNull<T>` to the heap object.
@@ -75,7 +87,7 @@ impl Object {
     /// - The Object's dynamic kind must be `T`.
     /// - No other `UnsafeRef<Object>` (or any other path) may alias the pointee
     ///   for the duration of the returned borrow.
-    pub unsafe fn downcast_mut<T: ObjectKind + ?Sized>(self: &mut UnsafeRef<Self>) -> &mut T {
+    pub unsafe fn downcast_mut<T: ObjectType + ?Sized>(self: &mut UnsafeRef<Self>) -> &mut T {
         // SAFETY: caller upholds the kind invariant, so `T::unerase` returns a
         // valid `NonNull<T>`. The `&mut self` borrow guarantees the resulting
         // `&mut T` is unique and valid for `&mut self`'s lifetime.
@@ -88,7 +100,7 @@ impl Object {
     /// # Safety
     ///
     /// The Object's dynamic kind must be `T`.
-    pub unsafe fn downcast<T: ObjectKind + ?Sized>(self: UnsafeRef<Self>) -> UnsafeRef<T> {
+    pub unsafe fn downcast<T: ObjectType + ?Sized>(self: UnsafeRef<Self>) -> UnsafeRef<T> {
         let raw = UnsafeRef::into_raw(self);
         // SAFETY: `UnsafeRef::into_raw` returned a valid pointer; caller
         // upholds the kind invariant, so `T::unerase` is a valid `NonNull<T>`
@@ -108,7 +120,6 @@ impl Object {
         // SAFETY: matched kind witnesses the dynamic type on each side.
         match self.kind() {
             ObjKind::String => unsafe { self.downcast_ref::<LoxString>().as_str() },
-            #[expect(unreachable_patterns)]
             o => panic!("Object::as_str called on non-string {o:?}"),
         }
     }
@@ -121,6 +132,8 @@ impl Object {
             (ObjKind::String, ObjKind::String) => unsafe {
                 self.downcast_ref::<LoxString>() == other.downcast_ref::<LoxString>()
             },
+            (ObjKind::Function, ObjKind::Function) => ptr::eq(self.as_ref(), other.as_ref()),
+            _ => false,
         }
     }
 
@@ -128,6 +141,19 @@ impl Object {
         match self.kind() {
             // SAFETY: matched kind witnesses the dynamic type.
             ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<LoxString>() }, f),
+            ObjKind::Function => Display::fmt(unsafe { self.downcast_ref::<LoxFunction>() }, f),
+        }
+    }
+}
+
+impl Display for WithStorage<'_, UnsafeRef<Object>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.0.kind() {
+            ObjKind::Function => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxFunction>() }, self.1).fmt(f)
+            }
+            ObjKind::String => self.0.display_fmt(f),
         }
     }
 }
@@ -183,6 +209,9 @@ impl Drop for OwnedObject {
             // `LoxString::boxed`, so re-boxing here uses the matching dealloc
             // path.
             ObjKind::String => drop(unsafe { Box::from_raw(LoxString::unerase(erased).as_ptr()) }),
+            ObjKind::Function => {
+                drop(unsafe { Box::from_raw(LoxFunction::unerase(erased).as_ptr()) })
+            }
         }
     }
 }
