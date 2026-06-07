@@ -1,16 +1,42 @@
+use std::collections::HashMap;
+
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
 use lasso::{Rodeo, Spur};
+use rustc_hash::FxBuildHasher;
 
 use crate::object::{Object, ObjectAdapter, ObjectType, OwnedObject};
+
+/// A `Spur`-keyed map (globals, instance fields, class methods). `Spur`s are
+/// sequential, compiler-controlled u32s, so a fast non-DoS-resistant hasher
+/// beats SipHash with no downside — keys are never attacker-chosen.
+pub type SymbolMap<V> = HashMap<Spur, V, FxBuildHasher>;
 
 /// A borrowed value paired with the `Storage` needed to render its objects.
 pub struct WithStorage<'a, T: ?Sized>(pub &'a T, pub &'a Storage);
 
-/// Owns the runtime heap (object pool) and the string interner.
-#[derive(Default)]
+/// Live-object count at which the next safe point collects; the threshold then
+/// grows with the surviving population so collection cost stays amortized.
+const INITIAL_GC_THRESHOLD: usize = 1024;
+
+/// Owns the runtime heap (object pool) and the string interner. Interned strings
+/// (the `Rodeo`) are permanent and never collected; only `add_obj`'d objects
+/// participate in GC.
 pub struct Storage {
     heap: ObjectPool,
     strings: Rodeo,
+    live_objects: usize,
+    next_gc: usize,
+}
+
+impl Default for Storage {
+    fn default() -> Self {
+        Self {
+            heap: ObjectPool::new(),
+            strings: Rodeo::new(),
+            live_objects: 0,
+            next_gc: INITIAL_GC_THRESHOLD,
+        }
+    }
 }
 
 impl Storage {
@@ -27,7 +53,23 @@ impl Storage {
     }
 
     pub fn add_obj<T: ObjectType + ?Sized>(&mut self, obj: Box<T>) -> UnsafeRef<Object> {
+        self.live_objects += 1;
         self.heap.add(obj)
+    }
+
+    /// Whether the live-object count has passed the collection threshold. The VM
+    /// checks this at safe points (the stress mode forces it regardless).
+    pub fn should_collect(&self) -> bool {
+        self.live_objects > self.next_gc
+    }
+
+    /// Walk the heap freeing every unmarked object (and clearing the marks on
+    /// the survivors), then regrow the threshold. The caller marks reachable
+    /// objects first.
+    pub fn sweep(&mut self) {
+        let freed = self.heap.sweep();
+        self.live_objects -= freed;
+        self.next_gc = (self.live_objects * 2).max(INITIAL_GC_THRESHOLD);
     }
 }
 
@@ -49,6 +91,29 @@ impl ObjectPool {
         let obj_ref = unsafe { UnsafeRef::from_raw(raw) };
         self.0.push_front(obj_ref.clone());
         obj_ref
+    }
+
+    /// Free every unmarked object, re-collecting the marked survivors (mark
+    /// cleared) into the list. Returns how many were freed.
+    fn sweep(&mut self) -> usize {
+        let mut freed = 0;
+        let mut survivors = SinglyLinkedList::default();
+        while let Some(obj_ref) = self.0.pop_front() {
+            if obj_ref.is_marked() {
+                obj_ref.set_marked(false);
+                survivors.push_front(obj_ref);
+            } else {
+                let raw = UnsafeRef::into_raw(obj_ref);
+                // SAFETY: same ownership invariant as `Drop` — every list entry
+                // is the unique owning pointer produced by `add`, so reclaiming
+                // it here is sound, and no live `UnsafeRef` aliases it because
+                // the collector proved it unreachable.
+                drop(unsafe { OwnedObject::from_raw(raw) });
+                freed += 1;
+            }
+        }
+        self.0 = survivors;
+        freed
     }
 }
 

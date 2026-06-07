@@ -237,6 +237,9 @@ mod tests {
         let foo = chunk.add_constant(Value::symbol(storage.intern("foo")));
         chunk.write_with_line(1, OpCode::Constant(num));
         chunk.write_with_line(1, OpCode::DefGlobal(foo));
+        // Top-level chunks return implicitly: push the (discarded) return value
+        // the `Ret` semantics expect.
+        chunk.write_with_line(2, OpCode::Nil);
         chunk.write_with_line(2, OpCode::Ret);
         chunk
     }

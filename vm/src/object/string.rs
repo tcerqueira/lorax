@@ -40,6 +40,26 @@ impl LoxString {
         }
     }
 
+    /// Build a string from two halves in a single allocation — `concatenate`'s
+    /// fast path, avoiding an intermediate owned `String`.
+    pub fn concat(a: &str, b: &str) -> Box<Self> {
+        let (a, b) = (a.as_bytes(), b.as_bytes());
+        let len = a.len() + b.len();
+        // SAFETY: same contract as `boxed` — every field is written exactly once
+        // into a freshly-allocated DST, and `buf` is filled from two
+        // non-overlapping sources covering its whole length.
+        unsafe {
+            <Box<Self> as AllocSliceDst<Self>>::new_slice_dst(len, |ptr| {
+                let p = ptr.as_ptr();
+                ptr::write(&raw mut (*p).obj, Object::string());
+                ptr::write(&raw mut (*p).len, len);
+                let buf = (&raw mut (*p).buf).cast::<u8>();
+                ptr::copy_nonoverlapping(a.as_ptr(), buf, a.len());
+                ptr::copy_nonoverlapping(b.as_ptr(), buf.add(a.len()), b.len());
+            })
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         Self::as_ref(self)
     }

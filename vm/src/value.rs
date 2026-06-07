@@ -61,6 +61,10 @@ impl Value {
         }
     }
 
+    pub fn is_instance(&self) -> bool {
+        matches!(self, Self::Object(o) if o.kind() == ObjKind::Instance)
+    }
+
     pub fn as_str<'s>(&'s self, storage: &'s Storage) -> &'s str {
         match self {
             Self::Symbol(key) => storage.resolve(*key),

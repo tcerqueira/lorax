@@ -3,6 +3,7 @@ use std::fmt::{self, Debug};
 use crate::{
     debug::{Disassembler, LineInfo},
     enconding::{OpCode, OpEncoder},
+    object::{ObjKind, function::LoxFunction},
     value::{Addr, Value},
 };
 
@@ -56,10 +57,25 @@ impl Chunk {
         };
     }
 
+    /// Append a single raw operand byte (e.g. an `OP_CLOSURE` upvalue-tail byte),
+    /// extending line coverage like [`write_with_line`](Self::write_with_line).
+    pub fn write_byte_with_line(&mut self, line: u32, byte: u8) {
+        let start = self.code.len() as u64;
+        self.code.push(byte);
+        let end = self.code.len() as u64;
+        match self.lines.last_mut() {
+            Some(info) if info.line == line => info.byte_range.end = end,
+            _ => self.lines.push(LineInfo {
+                line,
+                byte_range: start..end,
+            }),
+        }
+    }
+
     pub fn add_constant(&mut self, value: Value) -> Addr {
         assert!(
-            self.constants.len() < u8::MAX as usize,
-            "can't have more than 255 constants per chunk"
+            self.constants.len() <= u8::MAX as usize,
+            "can't have more than 256 constants per chunk"
         );
         self.constants.push(value);
         (self.constants.len() - 1) as u8
@@ -67,6 +83,19 @@ impl Chunk {
 
     pub fn constant(&self, addr: Addr) -> &Value {
         &self.constants[addr as usize]
+    }
+
+    /// Number of `(is_local, index)` tail pairs trailing an `OP_CLOSURE` whose
+    /// operand is `addr` — read from the wrapped function. Used to step past the
+    /// tail when walking the code (disassembler) or building the closure (VM).
+    pub fn closure_upvalue_count(&self, addr: Addr) -> usize {
+        match self.constant(addr) {
+            // SAFETY: a Closure op's constant is always a LoxFunction.
+            Value::Object(obj) if obj.kind() == ObjKind::Function => {
+                unsafe { obj.downcast_ref::<LoxFunction>() }.upvalue_count() as usize
+            }
+            _ => 0,
+        }
     }
 
     pub fn get_line(&self, byte_offset: u64) -> Option<&LineInfo> {

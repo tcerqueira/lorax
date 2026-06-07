@@ -3,14 +3,18 @@ use thiserror::Error;
 
 use crate::enconding::Slot;
 
-/// Maximum number of locals live at once. Capped at `u8::MAX` to match the
-/// chunk-constant limit and let any scope's pop count fit in a single `PopN`.
-const MAX_LOCALS: usize = u8::MAX as usize;
+/// Maximum number of locals live at once: 256, the full `Slot = u8` index space
+/// (0..=255). In a function, slot 0 is the reserved callee/`this` slot, leaving
+/// 255 for parameters and locals.
+const MAX_LOCALS: usize = u8::MAX as usize + 1;
 
 #[derive(Debug, Clone, Copy)]
 struct Local {
     name: Spur,
     depth: u32,
+    /// Set when a nested function captures this local as an upvalue, so scope
+    /// exit emits `OP_CLOSE_UPVALUE` for it instead of a plain pop.
+    captured: bool,
 }
 
 /// Locals form a stack; depths are monotonically non-decreasing front-to-back,
@@ -34,9 +38,10 @@ impl Scopes {
         self.depth += 1;
     }
 
-    /// Drop all locals declared in the current scope. Returns how many were
-    /// dropped — the caller emits matching `OpPop`s.
-    pub fn exit(&mut self) -> usize {
+    /// Drop all locals declared in the current scope. Returns their `captured`
+    /// flags in pop order (top of stack first) so the caller emits a
+    /// `CloseUpvalue` for each captured local and a plain pop for the rest.
+    pub fn exit(&mut self) -> Vec<bool> {
         debug_assert!(self.depth > 0, "exit at global scope");
         let pop_count = self
             .locals
@@ -44,9 +49,14 @@ impl Scopes {
             .rev()
             .take_while(|l| l.depth == self.depth)
             .count();
+        let captured = self.locals[self.locals.len() - pop_count..]
+            .iter()
+            .rev()
+            .map(|l| l.captured)
+            .collect();
         self.locals.truncate(self.locals.len() - pop_count);
         self.depth -= 1;
-        pop_count
+        captured
     }
 
     /// Push a new local at the current scope depth. Shadowing an existing
@@ -61,17 +71,23 @@ impl Scopes {
         self.locals.push(Local {
             name,
             depth: self.depth,
+            captured: false,
         });
         Ok(slot)
     }
 
     /// Resolve a name to the most recent local with that name, or `None` if
-    /// no local matches (caller falls back to globals).
+    /// no local matches (caller falls back to upvalues, then globals).
     pub fn resolve(&self, name: Spur) -> Option<Slot> {
         self.locals
             .iter()
             .rposition(|l| l.name == name)
             .map(|i| i as Slot)
+    }
+
+    /// Mark the local at `slot` as captured by a nested function.
+    pub fn mark_captured(&mut self, slot: Slot) {
+        self.locals[slot as usize].captured = true;
     }
 }
 
@@ -116,7 +132,7 @@ mod tests {
         scopes.enter();
         scopes.declare(s[1]).unwrap();
         scopes.declare(s[2]).unwrap();
-        assert_eq!(scopes.exit(), 2);
+        assert_eq!(scopes.exit(), vec![false, false]);
         assert_eq!(scopes.resolve(s[0]), Some(0));
         assert_eq!(scopes.resolve(s[1]), None);
         assert_eq!(scopes.resolve(s[2]), None);

@@ -1,13 +1,13 @@
 use std::borrow::Cow;
+use std::fmt;
 use std::fmt::Display;
 use std::ops::Range;
-use std::{fmt, io::Cursor};
 
 use report::Span;
 use serde::{Deserialize, Serialize};
 
 use crate::chunk::Chunk;
-use crate::enconding::{OpCode, OpDecoder};
+use crate::enconding::OpCode;
 use crate::value::Addr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,15 +39,19 @@ impl<'a, 'f> Disassembler<'a, 'f> {
     }
 
     pub fn disassemble_chunk(&mut self) -> fmt::Result {
-        let mut decoder = Cursor::new(self.chunk.code.as_slice());
+        let code = self.chunk.code.as_slice();
         let mut line_iter = self.chunk.lines.iter();
 
         writeln!(self.f, "{:<6}== {} ==", "", self.name)?;
-        let mut offset = decoder.position();
+        let mut ip = 0usize;
         let mut curr_line = line_iter.next();
         let mut prev_line = 0;
 
-        while let Ok(Some(instruction)) = decoder.decode_op::<OpCode>() {
+        while ip < code.len() {
+            let offset = ip as u64;
+            let Ok(instruction) = OpCode::decode_at(code, &mut ip) else {
+                break;
+            };
             let line_str = loop {
                 break match curr_line {
                     Some(line_info) if line_info.byte_range.contains(&offset) => {
@@ -69,8 +73,13 @@ impl<'a, 'f> Disassembler<'a, 'f> {
             };
 
             self.disassemble_instruction(instruction, offset, line_str)?;
-            offset = decoder.position();
             writeln!(self.f)?;
+
+            // A closure carries `2 * upvalue_count` trailing operand bytes that
+            // are not opcodes; step the cursor past them so decoding stays aligned.
+            if let OpCode::Closure(addr) = instruction {
+                ip += 2 * self.chunk.closure_upvalue_count(addr);
+            }
         }
         Ok(())
     }
@@ -124,6 +133,33 @@ impl OpCode {
             OpCode::JmpIfFalse(offset) => write_args1(f, "OP_JMP_IF_FALSE", offset),
             OpCode::Jmp(offset) => write_args1(f, "OP_JMP", offset),
             OpCode::Loop(offset) => write_args1(f, "OP_LOOP", offset),
+            OpCode::Call(arg_count) => write_args1(f, "OP_CALL", arg_count),
+            OpCode::Closure(addr) => write_addr(f, "OP_CLOSURE", addr),
+            OpCode::GetUpvalue(slot) => write_args1(f, "OP_GET_UPVALUE", slot),
+            OpCode::SetUpvalue(slot) => write_args1(f, "OP_SET_UPVALUE", slot),
+            OpCode::CloseUpvalue => write!(f, "OP_CLOSE_UPVALUE"),
+            OpCode::Class(addr) => write_addr(f, "OP_CLASS", addr),
+            OpCode::GetProperty(addr) => write_addr(f, "OP_GET_PROPERTY", addr),
+            OpCode::SetProperty(addr) => write_addr(f, "OP_SET_PROPERTY", addr),
+            OpCode::Method(addr) => write_addr(f, "OP_METHOD", addr),
+            OpCode::Invoke(addr, arg_count) => {
+                let name = &chunk.constants[*addr as usize];
+                write!(
+                    f,
+                    "{:<16} {name:<4}[{addr:<03}] ({arg_count} args)",
+                    "OP_INVOKE"
+                )
+            }
+            OpCode::Inherit => write!(f, "OP_INHERIT"),
+            OpCode::GetSuper(addr) => write_addr(f, "OP_GET_SUPER", addr),
+            OpCode::SuperInvoke(addr, arg_count) => {
+                let name = &chunk.constants[*addr as usize];
+                write!(
+                    f,
+                    "{:<16} {name:<4}[{addr:<03}] ({arg_count} args)",
+                    "OP_SUPER_INVOKE"
+                )
+            }
         }
     }
 }

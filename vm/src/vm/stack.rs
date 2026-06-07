@@ -1,6 +1,6 @@
 use std::slice;
 
-use crate::{enconding::Slot, value::Value};
+use crate::value::Value;
 
 // PERF: all accessors (`top`, `top_mut`, `peek`, `peek_mut`, `get`, `get_mut`,
 // `pop`) bounds-check on every dispatch. The compiler guarantees the indices
@@ -67,20 +67,45 @@ impl Stack {
             .expect("compiler bug, nothing to peek on the VM stack")
     }
 
-    /// Absolute-slot read. Used by `OP_GET_LOCAL` — local slot `n` lives at
-    /// stack index `n` (no call frames yet; when frames land this becomes
-    /// `frame.base + n`).
-    pub fn get(&self, slot: Slot) -> &Value {
+    /// Absolute-index read. `OP_GET_LOCAL` reads `frame.base + slot`; open
+    /// upvalues read the captured stack index directly.
+    pub fn at(&self, index: usize) -> &Value {
         self.inner
-            .get(slot as usize)
-            .expect("compiler bug, local slot out of range")
+            .get(index)
+            .expect("compiler bug, stack index out of range")
     }
 
-    /// Absolute-slot mutable access. Used by `OP_SET_LOCAL`.
-    pub fn get_mut(&mut self, slot: Slot) -> &mut Value {
+    /// Absolute-index mutable access (`OP_SET_LOCAL`, `OP_SET_UPVALUE`).
+    pub fn at_mut(&mut self, index: usize) -> &mut Value {
         self.inner
-            .get_mut(slot as usize)
-            .expect("compiler bug, local slot out of range")
+            .get_mut(index)
+            .expect("compiler bug, stack index out of range")
+    }
+
+    /// Current height. A frame's `base` is the height captured just before its
+    /// callee and arguments were pushed.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Drop everything at or above `index`. `OP_RETURN` truncates to the
+    /// returning frame's `base` to discard its whole window in one write.
+    pub fn truncate(&mut self, index: usize) {
+        self.inner.truncate(index);
+    }
+
+    /// Empty the stack (start-of-run reset).
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// The values from `start` to the top, e.g. a native call's argument window.
+    pub fn args_from(&self, start: usize) -> &[Value] {
+        &self.inner[start..]
     }
 
     pub fn iter(&self) -> slice::Iter<'_, Value> {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**lorax** is a Rust implementation of the Lox programming language from "Crafting Interpreters" by Robert Nystrom. The original Java/C implementation and language specification live at https://github.com/munificent/craftinginterpreters. It has two backends: a working **tree-walk interpreter** and an in-progress **bytecode VM**.
+**lorax** is a Rust implementation of the Lox programming language from "Crafting Interpreters" by Robert Nystrom. The original Java/C implementation and language specification live at https://github.com/munificent/craftinginterpreters. It has two backends: a **tree-walk interpreter** and a **bytecode VM**. The VM implements the full Lox language (functions, closures, classes, inheritance, `super`) plus a mark-sweep garbage collector; the tree-walk backend stops short of classes.
 
 ## Build & Run Commands
 
@@ -15,7 +15,7 @@ cargo check                               # Type-check only
 cargo clippy                               # Lint
 
 cargo run -- script.lox                    # Run a Lox script (tree-walk)
-cargo run -- --vm script.lox               # Run with VM backend (incomplete)
+cargo run -- --vm script.lox               # Run with VM backend
 cargo run -- -c 'print 1 + 2;'             # Run inline source (tree-walk)
 cargo run -- --vm -c 'print 1 + 2;'        # Run inline source (VM)
 cargo run                                  # Interactive REPL
@@ -32,7 +32,7 @@ cargo test --test <backend> <module>::              # Single test module
 cargo test --test <backend> <module>::<test_name>   # Single test
 ```
 
-114 tree-walk tests are `#[ignore]` for unimplemented features (classes, `this`, `super`, some resolver checks). The VM test binary **shadows** `lox_tests!` locally to slap `#[ignore = "VM not yet implemented"]` on every case — the VM doesn't yet cover enough of Lox to share the test suite, so remove the shadow as features land.
+114 tree-walk tests are `#[ignore]` for unimplemented features (classes, `this`, `super`, some resolver checks). The VM (`tests/vm.rs`) implements the full language; only 6 cases stay `#[ignore]`, all intentional semantic deviations from the book (same-scope shadowing is legal, so `var a = a + 1;` rebinds the previous `a`; constants are deduplicated; there is no AST-dump `parse` mode). Run the whole VM suite with `LORAX_STRESS_GC=1` to collect on every instruction — the strongest GC check.
 
 ## Workspace Crates
 
@@ -68,12 +68,15 @@ Key flow in `tree-walk/src/lib.rs`:
 
 ### VM design patterns
 
-- **Single-pass Pratt parser → bytecode** (`vm/src/compiler.rs`): no intermediate AST. `parse_bp` recurses by binding power; prefix/infix/postfix dispatch tables (`prefix_bp`/`infix_bp`/`postfix_bp`) gate the loop. Errors trigger `synchronize()` to skip to the next statement boundary so a single bad token doesn't poison the whole compile.
-- **`Handle` lvalue/rvalue threading**: `parse_*` methods return `Handle::Value` (already on the stack) or `Handle::Place` (a deferred global/local lvalue). `materialize` turns a `Place` into a read (`GetGlobal`/`GetLocal`); `store` (driven by `assignment` on `=`) turns it into a write (`SetGlobal`/`SetLocal`). This wires `=` and variable stores without a second pass.
-- **Jump backpatching** (`vm/src/compiler.rs`): forward jumps (`Jmp`/`JmpIfFalse`) are emitted with a placeholder `0` offset and fixed up by `patch_jmp` once the target is known; backward jumps (`while`) use `emit_loop` to encode a `Loop` op with the already-known negative offset. The VM's PC seeks via `relative_jump`.
-- **Encoded opcodes** (`vm/src/enconding.rs`): `OpCode` is `#[repr(u8)]` with inline operands; `Encode`/`Decode` traits serialize to/from the chunk's byte buffer. Adding an opcode means updating both arms plus the VM's `match`.
-- **Custom heap** (`vm/src/storage.rs`, `vm/src/object.rs`): `Storage` owns an `ObjectPool` (intrusive `SinglyLinkedList` of type-erased `UnsafeRef<Object>`) plus a `lasso::Rodeo` string interner. `Object` is a `#[repr(C)]` header with a `kind` tag; the concrete type (`LoxString`) is downcast unsafely from the tag. `OwnedObject::drop` dispatches on `kind` to free the correct DST layout — `Box<Object>` alone can't, because the alloc is oversized.
-- **`Value::Symbol(Spur)` for identifiers, `LoxString` for runtime strings**: identifiers are interned in `Storage`'s `Rodeo` and live inline in `Value` as `Spur` keys (cheap equality, used for globals lookup); runtime strings (e.g. concat results) are heap `LoxString` reached through `Value::Object`. The VM's `equal` op routes through `Value::as_str` so a `Symbol` and a `LoxString` with the same contents compare equal.
+- **Single-pass Pratt parser → bytecode** (`vm/src/compiler.rs`): no intermediate AST. `parse_bp` recurses by binding power; prefix/infix/postfix dispatch tables (`prefix_bp`/`infix_bp`/`postfix_bp`) gate the loop. Errors trigger `synchronize()` to skip to the next statement boundary so a single bad token doesn't poison the whole compile. The `Compiler` is a thin driver over a stack of per-function `Target`s (each owns a `Chunk` + `Scopes` + `FunctionKind`); compiling a `fun`/method pushes a `Target` and materializes a `LoxFunction` when its body ends. A parallel `classes` stack makes `this`/`super` legality structural.
+- **`Handle` lvalue/rvalue threading**: `parse_*` methods return `Handle::Value` (already on the stack) or `Handle::Place` (a deferred lvalue: global, local, upvalue, or instance property). `materialize` turns a `Place` into a read (`Get*`); `store` (driven by `assignment` on `=`) turns it into a write (`Set*`). This wires `=`, variable stores, and `a.b = c` without a second pass.
+- **Jump backpatching** (`vm/src/compiler.rs`): forward jumps (`Jmp`/`JmpIfFalse`) are emitted with a placeholder `0` offset and fixed up by `patch_jmp` once the target is known; backward jumps (`while`/`for`) use `emit_loop`. Over-long jumps/loops report a recoverable compile error rather than panicking. At runtime a jump is `frame.ip += offset` / `-= offset` (byte-offset IP, no cursor).
+- **Encoded opcodes** (`vm/src/enconding.rs`): `OpCode` is `#[repr(u8)]` with inline operands; the compiler `Encode`s into the chunk's byte buffer, and both the VM dispatch loop and the disassembler decode via the single `OpCode::decode_at(&[u8], &mut ip)`. Adding an opcode means updating the enum, the `Encode` arm, the `decode_at` arm, the `disassemble` arm, and the VM's `match`.
+- **CallFrame stack + flat dispatch** (`vm/src/vm.rs`, `vm/src/vm/frame.rs`): execution is a flat loop over a `Vec<CallFrame>`; `Call` pushes a frame, `Ret` pops one, an empty stack halts. The top-level script runs as `FrameSource::TopLevel(Chunk)` (frame 0); a call runs as `FrameSource::Closure(UnsafeRef<Object>)` reached through the heap handle (never a tracked `&Chunk`, since the callee's body mutates the heap that owns its chunk). Locals are `base + slot`; a `FRAMES_MAX` cap gives a graceful "Stack overflow." Recursion never rides the Rust stack.
+- **Closures via stack-index upvalues** (`vm/src/object/{closure,upvalue}.rs`): `resolve_upvalue` walks the enclosing `Target` stack; `OP_CLOSURE` carries an `(is_local, index)` tail. A `LoxUpvalue` is `Open(stack index)` while its variable is live and `Closed(Value)` after — an index, not a raw pointer, so the reallocating value stack can't dangle it. The VM keeps a `Vec` of open upvalues so sibling closures share one; `OP_CLOSE_UPVALUE` / frame return hoist captured locals into their own cell.
+- **Classes through the same machinery** (`vm/src/object/{class,instance,bound_method}.rs`): `.` is an infix operator yielding a `Place::Property`, so get/set reuse `materialize`/`store`; `recv.m(args)` fuses into `OP_INVOKE`. Methods live in a `RefCell<SymbolMap<Value>>` on `LoxClass`; `init`, `this` (slot 0), bound methods, and copy-down inheritance (`OP_INHERIT`) follow clox. `super` is a synthetic upvalue captured from the class-declaration scope.
+- **Custom heap + mark-sweep GC** (`vm/src/storage.rs`, `vm/src/object.rs`, `vm/src/gc.rs`): `Storage` owns an `ObjectPool` (intrusive `SinglyLinkedList` of type-erased `UnsafeRef<Object>`) plus a `lasso::Rodeo` interner. `Object` is a `#[repr(C)]` header (`kind` tag + GC `mark` `Cell` + list link); concrete types downcast unsafely from the tag, and `OwnedObject::drop` dispatches on `kind` to free the correct (possibly DST) layout. The collector marks roots (stack, globals, frame closures, open upvalues, the script chunk's constants), blackens via `gc::Tracer`, and sweeps the intrusive list. Triggered at a dispatch safe point by a live-object threshold; `LORAX_STRESS_GC=1` (or `VirtualMachine::stress()`) collects every instruction.
+- **`Value::Symbol(Spur)` for identifiers, `LoxString` for runtime strings**: identifiers, string literals, and member names are interned in `Storage`'s `Rodeo` and live inline in `Value` as `Spur` keys (cheap equality; keys for globals/fields/methods, which are `FxHashMap`s). Runtime strings (concat results) are heap `LoxString` reached through `Value::Object`; the interner is permanent and never collected. The VM's `equal` op routes through `Value::as_str` so a `Symbol` and a `LoxString` with the same contents compare equal.
 
 ## Lox Implementation Status
 
@@ -97,16 +100,19 @@ Key flow in `tree-walk/src/lib.rs`:
 
 ### VM status
 
-Through the book's "Compiling Expressions" → "Jumping Back and Forth" chapters (ch. 17–23). Implemented:
+The VM implements the **full Lox language** — every book chapter through "Optimization" (ch. 17–30):
 
-- Literals (`true`/`false`/`nil`/numbers/strings), unary `-`/`!`, all arithmetic/comparison/equality ops, string concatenation
-- `print` and expression statements
-- Global `var` declarations, reads, and assignment (`DefGlobal`/`GetGlobal`/`SetGlobal`)
-- Local variables with block scoping and shadowing (`GetLocal`/`SetLocal`, scope-exit `PopN`)
-- Control flow: `if`/`else`, logical `and`/`or` (short-circuit), `while` loops (`Jmp`/`JmpIfFalse`/`Loop` with backpatching)
-- Error reporting + `synchronize()`
+- Datatypes, all operators, `print`, globals, locals with block scoping/shadowing, `if`/`else`, logical `and`/`or`, `while`, `for`
+- Functions: declarations, first-class values, recursion, `return`, arity checking, the native `clock()`
+- Closures: upvalues with sharing and close-on-scope-exit
+- Classes: instances, fields, methods, `init`, `this`, bound methods, `OP_INVOKE`
+- Inheritance (`<`), copy-down methods, `super` access and calls
+- Mark-sweep garbage collection (`gc::Tracer` + intrusive sweep list)
+- Graceful compile/runtime limits (too many constants/locals/upvalues/args, oversized jumps, stack overflow)
 
-Not yet: `for` loops, functions/calls, closures, and classes — so the VM still can't run most programs in `tests/sources/`, and the `tests/vm.rs` shadow keeps every case `#[ignore]`.
+Optimizations applied (from ch. 30 and the perf review): `FxHashMap` for `Spur`-keyed tables, raw-byte instruction dispatch (`decode_at`, no per-op enum/cursor), single-allocation string concat, compile-time string interning. NaN-boxing and a hand-rolled probe table were deliberately rejected as poor fits for the Rust `Value` enum.
+
+All non-skipped `tests/sources/` cases pass on the VM; the only `#[ignore]`s are intentional semantic deviations (see Testing). The new unsafe paths (object downcasts/drops, closures, GC sweep) are covered by in-process end-to-end tests in `vm/src/lib.rs` that run under Miri and stress GC.
 
 ## Toolchain
 

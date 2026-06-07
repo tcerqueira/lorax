@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
+use std::io::{self, Write};
 
 use thiserror::Error;
 
@@ -34,45 +34,40 @@ pub enum OpCode {
     JmpIfFalse(Offset) = 0x17,
     Jmp(Offset) = 0x18,
     Loop(Offset) = 0x19,
+    Call(u8) = 0x1A,
+    /// Wrap the function constant at `Addr` in a closure. Followed in the code
+    /// stream by `2 * upvalue_count` raw bytes — an `(is_local, index)` pair per
+    /// upvalue — which the VM and disassembler read out of band (the count comes
+    /// from the function itself).
+    Closure(Addr) = 0x1B,
+    GetUpvalue(Slot) = 0x1C,
+    SetUpvalue(Slot) = 0x1D,
+    CloseUpvalue = 0x1E,
+    Class(Addr) = 0x1F,
+    GetProperty(Addr) = 0x20,
+    SetProperty(Addr) = 0x21,
+    /// Bind the closure on top of the stack as a method (by name at `Addr`) on
+    /// the class beneath it.
+    Method(Addr) = 0x22,
+    /// Fused property-get + call for `recv.name(args)`: name constant, arg count.
+    Invoke(Addr, u8) = 0x23,
+    /// Copy the superclass's methods into the subclass (copy-down inheritance).
+    Inherit = 0x24,
+    GetSuper(Addr) = 0x25,
+    /// Fused super-method get + call: method-name constant, arg count.
+    SuperInvoke(Addr, u8) = 0x26,
 }
 
 pub type Slot = u8;
 pub type Offset = u16;
 
-pub trait Decode: Sized {
-    fn decode<R: Read + ?Sized>(reader: &mut R) -> Result<Self, DecodeError>;
-}
-
 #[derive(Debug, Error)]
 pub enum DecodeError {
     #[error("unknown op code: {0}")]
     UnknownOpCode(u8),
-    #[error("IO error: {0}")]
-    IoError(#[from] io::Error),
+    #[error("unexpected end of bytecode while decoding an operand")]
+    UnexpectedEnd,
 }
-
-pub trait OpDecoder: BufRead + Seek {
-    fn decode_op<T>(&mut self) -> Result<Option<T>, DecodeError>
-    where
-        T: Decode,
-    {
-        if self.fill_buf()?.is_empty() {
-            return Ok(None);
-        }
-        T::decode(self).map(Some)
-    }
-
-    fn current_position(&mut self) -> io::Result<u64> {
-        self.stream_position()
-    }
-
-    fn relative_jump(&mut self, offset: i64) -> io::Result<()> {
-        self.seek(SeekFrom::Current(offset))?;
-        Ok(())
-    }
-}
-
-impl<R> OpDecoder for R where R: BufRead + Seek {}
 
 pub trait Encode {
     fn encode<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<usize>;
@@ -89,23 +84,28 @@ pub trait OpEncoder: Write {
 
 impl<W> OpEncoder for W where W: Write {}
 
-fn read<const N: usize, R: Read + ?Sized>(reader: &mut R) -> Result<[u8; N], DecodeError> {
-    let mut buf = [0u8; N];
-    reader.read_exact(&mut buf)?;
-    Ok(buf)
+fn next_u8(code: &[u8], ip: &mut usize) -> Result<u8, DecodeError> {
+    let byte = *code.get(*ip).ok_or(DecodeError::UnexpectedEnd)?;
+    *ip += 1;
+    Ok(byte)
 }
 
-fn read_one<R: Read + ?Sized>(reader: &mut R) -> Result<u8, DecodeError> {
-    read::<1, _>(reader).map(|[b]| b)
+fn next_offset(code: &[u8], ip: &mut usize) -> Result<Offset, DecodeError> {
+    let lo = *code.get(*ip).ok_or(DecodeError::UnexpectedEnd)?;
+    let hi = *code.get(*ip + 1).ok_or(DecodeError::UnexpectedEnd)?;
+    *ip += 2;
+    Ok(Offset::from_le_bytes([lo, hi]))
 }
 
-impl Decode for OpCode {
-    fn decode<R: Read + ?Sized>(reader: &mut R) -> Result<Self, DecodeError> {
-        let tag = read_one(reader)?;
-        let op = match tag {
+impl OpCode {
+    /// Decode the opcode at `code[*ip]`, advancing `*ip` past the tag and its
+    /// inline operands. The VM dispatch loop and the disassembler share this as
+    /// the single decode path; the compiler's `Encode` is its inverse.
+    pub fn decode_at(code: &[u8], ip: &mut usize) -> Result<OpCode, DecodeError> {
+        let op = match next_u8(code, ip)? {
             0x00 => OpCode::NoOp,
             0x01 => OpCode::Ret,
-            0x02 => OpCode::Constant(read_one(reader)?),
+            0x02 => OpCode::Constant(next_u8(code, ip)?),
             0x03 => OpCode::Neg,
             0x04 => OpCode::Add,
             0x05 => OpCode::Sub,
@@ -120,15 +120,28 @@ impl Decode for OpCode {
             0x0E => OpCode::Less,
             0x0F => OpCode::Print,
             0x10 => OpCode::Pop,
-            0x11 => OpCode::DefGlobal(read_one(reader)?),
-            0x12 => OpCode::GetGlobal(read_one(reader)?),
-            0x13 => OpCode::SetGlobal(read_one(reader)?),
-            0x14 => OpCode::GetLocal(read_one(reader)?),
-            0x15 => OpCode::SetLocal(read_one(reader)?),
-            0x16 => OpCode::PopN(read_one(reader)?),
-            0x17 => OpCode::JmpIfFalse(Offset::from_le_bytes(read::<2, _>(reader)?)),
-            0x18 => OpCode::Jmp(Offset::from_le_bytes(read::<2, _>(reader)?)),
-            0x19 => OpCode::Loop(Offset::from_le_bytes(read::<2, _>(reader)?)),
+            0x11 => OpCode::DefGlobal(next_u8(code, ip)?),
+            0x12 => OpCode::GetGlobal(next_u8(code, ip)?),
+            0x13 => OpCode::SetGlobal(next_u8(code, ip)?),
+            0x14 => OpCode::GetLocal(next_u8(code, ip)?),
+            0x15 => OpCode::SetLocal(next_u8(code, ip)?),
+            0x16 => OpCode::PopN(next_u8(code, ip)?),
+            0x17 => OpCode::JmpIfFalse(next_offset(code, ip)?),
+            0x18 => OpCode::Jmp(next_offset(code, ip)?),
+            0x19 => OpCode::Loop(next_offset(code, ip)?),
+            0x1A => OpCode::Call(next_u8(code, ip)?),
+            0x1B => OpCode::Closure(next_u8(code, ip)?),
+            0x1C => OpCode::GetUpvalue(next_u8(code, ip)?),
+            0x1D => OpCode::SetUpvalue(next_u8(code, ip)?),
+            0x1E => OpCode::CloseUpvalue,
+            0x1F => OpCode::Class(next_u8(code, ip)?),
+            0x20 => OpCode::GetProperty(next_u8(code, ip)?),
+            0x21 => OpCode::SetProperty(next_u8(code, ip)?),
+            0x22 => OpCode::Method(next_u8(code, ip)?),
+            0x23 => OpCode::Invoke(next_u8(code, ip)?, next_u8(code, ip)?),
+            0x24 => OpCode::Inherit,
+            0x25 => OpCode::GetSuper(next_u8(code, ip)?),
+            0x26 => OpCode::SuperInvoke(next_u8(code, ip)?, next_u8(code, ip)?),
             unknown => return Err(DecodeError::UnknownOpCode(unknown)),
         };
         Ok(op)
@@ -177,6 +190,19 @@ impl Encode for OpCode {
                 let buf = offset.to_le_bytes();
                 write(&[0x19, buf[0], buf[1]])
             }
+            OpCode::Call(arg_count) => write(&[0x1A, *arg_count]),
+            OpCode::Closure(addr) => write(&[0x1B, *addr]),
+            OpCode::GetUpvalue(slot) => write(&[0x1C, *slot]),
+            OpCode::SetUpvalue(slot) => write(&[0x1D, *slot]),
+            OpCode::CloseUpvalue => write(&[0x1E]),
+            OpCode::Class(addr) => write(&[0x1F, *addr]),
+            OpCode::GetProperty(addr) => write(&[0x20, *addr]),
+            OpCode::SetProperty(addr) => write(&[0x21, *addr]),
+            OpCode::Method(addr) => write(&[0x22, *addr]),
+            OpCode::Invoke(addr, arg_count) => write(&[0x23, *addr, *arg_count]),
+            OpCode::Inherit => write(&[0x24]),
+            OpCode::GetSuper(addr) => write(&[0x25, *addr]),
+            OpCode::SuperInvoke(addr, arg_count) => write(&[0x26, *addr, *arg_count]),
         }
     }
 }

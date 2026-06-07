@@ -1,4 +1,5 @@
 use std::{
+    cell::Cell,
     fmt::{self, Debug, Display, Formatter},
     mem,
     ops::Deref,
@@ -9,12 +10,21 @@ use erasable::{Erasable, ErasedPtr, erase};
 use intrusive_collections::{SinglyLinkedListLink, UnsafeRef, intrusive_adapter};
 
 use crate::{
-    object::{function::LoxFunction, string::LoxString},
+    object::{
+        bound_method::LoxBoundMethod, class::LoxClass, closure::LoxClosure, function::LoxFunction,
+        instance::LoxInstance, native::LoxNative, string::LoxString, upvalue::LoxUpvalue,
+    },
     storage::WithStorage,
 };
 
+pub mod bound_method;
+pub mod class;
+pub mod closure;
 pub mod function;
+pub mod instance;
+pub mod native;
 pub mod string;
+pub mod upvalue;
 
 /// A concrete object kind that can be stored behind an [`Object`] header.
 ///
@@ -41,6 +51,11 @@ pub unsafe trait ObjectType: Erasable {
 #[derive(Debug)]
 pub struct Object {
     kind: ObjKind,
+    /// GC mark bit. `Cell` because the collector flips it through the shared
+    /// `&Object` that the heap, stack, and globals all alias. It sits in the
+    /// padding between `kind` and `link`, so `Object` stays 16 bytes and the
+    /// hand-rolled `LoxString` DST layout is unchanged (asserted in tests).
+    mark: Cell<bool>,
     link: SinglyLinkedListLink,
 }
 
@@ -50,21 +65,63 @@ intrusive_adapter!(pub ObjectAdapter = UnsafeRef<Object>: Object { link => Singl
 pub enum ObjKind {
     String,
     Function,
+    Native,
+    Closure,
+    Upvalue,
+    Class,
+    Instance,
+    BoundMethod,
 }
 
 impl Object {
-    pub fn string() -> Self {
+    fn of(kind: ObjKind) -> Self {
         Self {
-            kind: ObjKind::String,
+            kind,
+            mark: Cell::new(false),
             link: SinglyLinkedListLink::new(),
         }
     }
 
+    pub fn string() -> Self {
+        Self::of(ObjKind::String)
+    }
+
     pub fn function() -> Self {
-        Self {
-            kind: ObjKind::Function,
-            link: SinglyLinkedListLink::new(),
-        }
+        Self::of(ObjKind::Function)
+    }
+
+    pub fn native() -> Self {
+        Self::of(ObjKind::Native)
+    }
+
+    pub fn closure() -> Self {
+        Self::of(ObjKind::Closure)
+    }
+
+    pub fn upvalue() -> Self {
+        Self::of(ObjKind::Upvalue)
+    }
+
+    pub fn class() -> Self {
+        Self::of(ObjKind::Class)
+    }
+
+    pub fn instance() -> Self {
+        Self::of(ObjKind::Instance)
+    }
+
+    pub fn bound_method() -> Self {
+        Self::of(ObjKind::BoundMethod)
+    }
+
+    /// GC mark bit. The collector marks reachable objects, then sweeps (and
+    /// clears) the unmarked rest.
+    pub fn is_marked(&self) -> bool {
+        self.mark.get()
+    }
+
+    pub fn set_marked(&self, marked: bool) {
+        self.mark.set(marked);
     }
 
     /// Downcast a shared reference to a concrete kind.
@@ -132,7 +189,16 @@ impl Object {
             (ObjKind::String, ObjKind::String) => unsafe {
                 self.downcast_ref::<LoxString>() == other.downcast_ref::<LoxString>()
             },
-            (ObjKind::Function, ObjKind::Function) => ptr::eq(self.as_ref(), other.as_ref()),
+            // Heap objects with reference identity (everything but strings).
+            (ObjKind::Function, ObjKind::Function)
+            | (ObjKind::Native, ObjKind::Native)
+            | (ObjKind::Closure, ObjKind::Closure)
+            | (ObjKind::Upvalue, ObjKind::Upvalue)
+            | (ObjKind::Class, ObjKind::Class)
+            | (ObjKind::Instance, ObjKind::Instance)
+            | (ObjKind::BoundMethod, ObjKind::BoundMethod) => {
+                ptr::eq(self.as_ref(), other.as_ref())
+            }
             _ => false,
         }
     }
@@ -142,6 +208,15 @@ impl Object {
             // SAFETY: matched kind witnesses the dynamic type.
             ObjKind::String => Display::fmt(unsafe { self.downcast_ref::<LoxString>() }, f),
             ObjKind::Function => Display::fmt(unsafe { self.downcast_ref::<LoxFunction>() }, f),
+            ObjKind::Native => Display::fmt(unsafe { self.downcast_ref::<LoxNative>() }, f),
+            ObjKind::Closure => Display::fmt(unsafe { self.downcast_ref::<LoxClosure>() }, f),
+            ObjKind::Class => Display::fmt(unsafe { self.downcast_ref::<LoxClass>() }, f),
+            ObjKind::Instance => Display::fmt(unsafe { self.downcast_ref::<LoxInstance>() }, f),
+            ObjKind::BoundMethod => {
+                Display::fmt(unsafe { self.downcast_ref::<LoxBoundMethod>() }, f)
+            }
+            // Upvalues never surface to user code; this is for debug only.
+            ObjKind::Upvalue => write!(f, "<upvalue>"),
         }
     }
 }
@@ -153,7 +228,27 @@ impl Display for WithStorage<'_, UnsafeRef<Object>> {
                 // SAFETY: matched kind witnesses the dynamic type.
                 WithStorage(unsafe { self.0.downcast_ref::<LoxFunction>() }, self.1).fmt(f)
             }
-            ObjKind::String => self.0.display_fmt(f),
+            ObjKind::Native => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxNative>() }, self.1).fmt(f)
+            }
+            ObjKind::Closure => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxClosure>() }, self.1).fmt(f)
+            }
+            ObjKind::Class => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxClass>() }, self.1).fmt(f)
+            }
+            ObjKind::Instance => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxInstance>() }, self.1).fmt(f)
+            }
+            ObjKind::BoundMethod => {
+                // SAFETY: matched kind witnesses the dynamic type.
+                WithStorage(unsafe { self.0.downcast_ref::<LoxBoundMethod>() }, self.1).fmt(f)
+            }
+            ObjKind::String | ObjKind::Upvalue => self.0.display_fmt(f),
         }
     }
 }
@@ -212,6 +307,20 @@ impl Drop for OwnedObject {
             ObjKind::Function => {
                 drop(unsafe { Box::from_raw(LoxFunction::unerase(erased).as_ptr()) })
             }
+            ObjKind::Native => drop(unsafe { Box::from_raw(LoxNative::unerase(erased).as_ptr()) }),
+            ObjKind::Closure => {
+                drop(unsafe { Box::from_raw(LoxClosure::unerase(erased).as_ptr()) })
+            }
+            ObjKind::Upvalue => {
+                drop(unsafe { Box::from_raw(LoxUpvalue::unerase(erased).as_ptr()) })
+            }
+            ObjKind::Class => drop(unsafe { Box::from_raw(LoxClass::unerase(erased).as_ptr()) }),
+            ObjKind::Instance => {
+                drop(unsafe { Box::from_raw(LoxInstance::unerase(erased).as_ptr()) })
+            }
+            ObjKind::BoundMethod => {
+                drop(unsafe { Box::from_raw(LoxBoundMethod::unerase(erased).as_ptr()) })
+            }
         }
     }
 }
@@ -220,6 +329,14 @@ impl Drop for OwnedObject {
 mod tests {
     use super::*;
     use crate::storage::Storage;
+
+    #[test]
+    fn header_layout_absorbs_mark_bit() {
+        // The GC mark bit must sit in existing padding so `Object` stays 16
+        // bytes and the hand-rolled `LoxString` DST layout is unaffected.
+        assert_eq!(mem::size_of::<Object>(), 16);
+        assert_eq!(mem::align_of::<Object>(), 8);
+    }
 
     #[test]
     fn drop_frees_string_alloc() {
