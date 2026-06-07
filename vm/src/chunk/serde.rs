@@ -16,7 +16,7 @@ use thiserror::Error;
 use crate::chunk::Chunk;
 use crate::object::{ObjKind, string::LoxString};
 use crate::storage::{Storage, WithStorage};
-use crate::value::Value;
+use crate::value::{Value, ValueView};
 
 #[derive(Debug, Error)]
 pub enum ChunkIoError {
@@ -97,17 +97,17 @@ impl Serialize for WithStorage<'_, Value> {
         let (value, storage) = (self.0, self.1);
         // Variant indices are part of the wire format — only ever append.
         const NAME: &str = "Value";
-        match value {
-            Value::Nil => serializer.serialize_unit_variant(NAME, 0, "Nil"),
-            Value::Boolean(b) => serializer.serialize_newtype_variant(NAME, 1, "Boolean", b),
-            Value::Number(n) => serializer.serialize_newtype_variant(NAME, 2, "Number", n),
-            Value::Symbol(key) => {
-                serializer.serialize_newtype_variant(NAME, 3, "Symbol", storage.resolve(*key))
+        match value.view() {
+            ValueView::Nil => serializer.serialize_unit_variant(NAME, 0, "Nil"),
+            ValueView::Boolean(b) => serializer.serialize_newtype_variant(NAME, 1, "Boolean", &b),
+            ValueView::Number(n) => serializer.serialize_newtype_variant(NAME, 2, "Number", &n),
+            ValueView::Symbol(key) => {
+                serializer.serialize_newtype_variant(NAME, 3, "Symbol", storage.resolve(key))
             }
-            Value::Object(obj) if obj.kind() == ObjKind::String => {
+            ValueView::Object(obj) if obj.kind() == ObjKind::String => {
                 serializer.serialize_newtype_variant(NAME, 4, "Str", obj.as_str())
             }
-            Value::Object(_) => Err(S::Error::custom(
+            ValueView::Object(_) => Err(S::Error::custom(
                 "constant pool holds a non-string object that cannot be serialized",
             )),
         }
@@ -200,17 +200,29 @@ impl<'de> DeserializeSeed<'de> for ValueSeed<'_> {
                 Ok(match index {
                     0 => {
                         payload.unit_variant()?;
-                        Value::Nil
+                        Value::nil()
                     }
-                    1 => Value::Boolean(payload.newtype_variant()?),
-                    2 => Value::Number(payload.newtype_variant()?),
+                    1 => Value::boolean(payload.newtype_variant()?),
+                    2 => {
+                        // Validate at the trust boundary: a corrupt/hostile chunk
+                        // could encode a non-number NaN whose bits collide with the
+                        // NaN-box Object/Symbol tag, and `Value::number` keeps raw
+                        // bits. Rejecting it here means deserialization can never
+                        // mint a tag-aliasing `Value` that the rest of the VM would
+                        // misread as a (wild) pointer.
+                        let value = Value::number(payload.newtype_variant()?);
+                        if !value.is_number() {
+                            return Err(A::Error::custom("constant pool holds a non-number NaN"));
+                        }
+                        value
+                    }
                     3 => {
                         let name: &str = payload.newtype_variant()?;
-                        Value::Symbol(self.0.intern(name))
+                        Value::symbol(self.0.intern(name))
                     }
                     4 => {
                         let text: &str = payload.newtype_variant()?;
-                        Value::Object(self.0.add_obj(LoxString::boxed(text)))
+                        Value::object(self.0.add_obj(LoxString::boxed(text)))
                     }
                     other => {
                         return Err(A::Error::custom(format!("unknown Value variant {other}")));
@@ -261,21 +273,21 @@ mod tests {
         assert_eq!(loaded.constant(0), &Value::number(1.5));
         // The symbol is re-interned into the destination storage, so its Spur
         // may differ; the resolved text must not.
-        let Value::Symbol(key) = loaded.constant(1) else {
+        let Some(key) = loaded.constant(1).as_symbol() else {
             panic!("constant 1 should be a symbol")
         };
-        assert_eq!(dst_storage.resolve(*key), "foo");
+        assert_eq!(dst_storage.resolve(key), "foo");
     }
 
     #[test]
     fn round_trips_all_constant_kinds() {
         let mut src = Storage::new();
         let mut chunk = Chunk::default();
-        chunk.add_constant(Value::Nil);
+        chunk.add_constant(Value::nil());
         chunk.add_constant(Value::boolean(true));
         chunk.add_constant(Value::number(2.5));
         chunk.add_constant(Value::symbol(src.intern("name")));
-        chunk.add_constant(Value::Object(src.add_obj(LoxString::boxed("hello"))));
+        chunk.add_constant(Value::object(src.add_obj(LoxString::boxed("hello"))));
 
         let mut bytes = Vec::new();
         chunk.serialize(&src, &mut bytes).unwrap();
@@ -283,14 +295,14 @@ mod tests {
         let mut dst = Storage::new();
         let loaded = Chunk::from_bytes(&mut dst, &bytes).unwrap();
 
-        assert_eq!(loaded.constant(0), &Value::Nil);
+        assert_eq!(loaded.constant(0), &Value::nil());
         assert_eq!(loaded.constant(1), &Value::boolean(true));
         assert_eq!(loaded.constant(2), &Value::number(2.5));
-        let Value::Symbol(key) = loaded.constant(3) else {
+        let Some(key) = loaded.constant(3).as_symbol() else {
             panic!("constant 3 should be a symbol")
         };
-        assert_eq!(dst.resolve(*key), "name");
-        let Value::Object(obj) = loaded.constant(4) else {
+        assert_eq!(dst.resolve(key), "name");
+        let Some(obj) = loaded.constant(4).as_object() else {
             panic!("constant 4 should be a heap string")
         };
         assert_eq!(obj.kind(), ObjKind::String);

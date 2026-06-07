@@ -1,11 +1,13 @@
 use std::{
     fmt::Display,
+    mem,
     ops::{Add, Div, Mul, Sub},
 };
 
 use intrusive_collections::UnsafeRef;
 use lasso::Spur;
 use report::{Span, error::RuntimeError};
+use smallvec::SmallVec;
 
 use crate::{
     chunk::Chunk,
@@ -47,8 +49,9 @@ pub struct VirtualMachine {
     globals: SymbolMap<Value>,
     /// Live `LoxUpvalue`s still pointing into the value stack, so sibling
     /// closures capturing the same local share one upvalue. Closed and removed
-    /// when the underlying slot leaves the stack.
-    open_upvalues: Vec<UnsafeRef<Object>>,
+    /// when the underlying slot leaves the stack. Usually only a few are open at
+    /// once, so it lives inline (no heap) until that handful is exceeded.
+    open_upvalues: SmallVec<[UnsafeRef<Object>; 8]>,
     /// Interned name of the initializer method (`init`), cached for the
     /// class-construction fast path.
     init: Spur,
@@ -73,7 +76,7 @@ impl VirtualMachine {
             frames: Vec::with_capacity(FRAMES_MAX),
             storage,
             globals: SymbolMap::default(),
-            open_upvalues: Vec::new(),
+            open_upvalues: SmallVec::new(),
             init,
             stress_gc: std::env::var_os("LORAX_STRESS_GC").is_some(),
             debug: false,
@@ -104,7 +107,7 @@ impl VirtualMachine {
     fn define_native(&mut self, name: &str, func: NativeFn) {
         let spur = self.storage.intern(name);
         let obj = self.storage.add_obj(Box::new(LoxNative::new(spur, func)));
-        self.globals.insert(spur, Value::Object(obj));
+        self.globals.insert(spur, Value::object(obj));
     }
 
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
@@ -114,11 +117,7 @@ impl VirtualMachine {
         self.stack.clear();
         self.open_upvalues.clear();
         self.frames.clear();
-        self.frames.push(CallFrame {
-            source: FrameSource::TopLevel(chunk),
-            ip: 0,
-            base: 0,
-        });
+        self.push_frame(FrameSource::TopLevel(Box::new(chunk)), 0);
         self.dispatch()
     }
 
@@ -137,7 +136,7 @@ impl VirtualMachine {
             let op = {
                 let frame = &mut self.frames[top];
                 let mut ip = frame.ip;
-                let op = OpCode::decode_at(frame.source.code(), &mut ip)?;
+                let op = OpCode::decode_at(frame.code(), &mut ip)?;
                 frame.ip = ip;
                 op
             };
@@ -165,7 +164,7 @@ impl VirtualMachine {
                 }
                 OpCode::SetUpvalue(slot) => {
                     // Assignment is an expression — leave the value on the stack.
-                    let value = self.stack.top().clone();
+                    let value = *self.stack.top();
                     self.upvalue_set(slot, value);
                 }
                 OpCode::CloseUpvalue => {
@@ -175,7 +174,7 @@ impl VirtualMachine {
                 OpCode::Class(addr) => {
                     let name = self.variable_name(addr);
                     let class = self.storage.add_obj(Box::new(LoxClass::new(name)));
-                    self.stack.push(Value::Object(class));
+                    self.stack.push(Value::object(class));
                 }
                 OpCode::GetProperty(addr) => self.get_property(addr, op_start)?,
                 OpCode::SetProperty(addr) => self.set_property(addr, op_start)?,
@@ -187,7 +186,7 @@ impl VirtualMachine {
                     self.super_invoke(addr, arg_count, op_start)?
                 }
                 OpCode::Constant(addr) => {
-                    let constant = self.current_chunk().constant(addr).clone();
+                    let constant = *self.current_chunk().constant(addr);
                     self.stack.push(constant);
                 }
                 OpCode::Neg => {
@@ -209,7 +208,7 @@ impl VirtualMachine {
                 OpCode::Nil => self.stack.push(Value::nil()),
                 OpCode::Not => {
                     let v = self.stack.top_mut();
-                    *v = Value::Boolean(v.is_falsey());
+                    *v = Value::boolean(v.is_falsey());
                 }
                 OpCode::Equal => self.equal(),
                 OpCode::Greater => self.binary(Value::greater, op_start)?,
@@ -230,7 +229,7 @@ impl VirtualMachine {
                     let key = self.variable_name(addr);
                     match self.globals.get(&key) {
                         Some(value) => {
-                            let value = value.clone();
+                            let value = *value;
                             self.stack.push(value);
                         }
                         None => return Err(self.runtime(op_start, "Undefined variable.")),
@@ -238,7 +237,7 @@ impl VirtualMachine {
                 }
                 OpCode::SetGlobal(addr) => {
                     let key = self.variable_name(addr);
-                    let value = self.stack.top().clone();
+                    let value = *self.stack.top();
                     if let Some(slot) = self.globals.get_mut(&key) {
                         *slot = value;
                     } else {
@@ -246,13 +245,13 @@ impl VirtualMachine {
                     }
                 }
                 OpCode::GetLocal(slot) => {
-                    let v = self.stack.at(base + slot as usize).clone();
+                    let v = *self.stack.at(base + slot as usize);
                     self.stack.push(v);
                 }
                 OpCode::SetLocal(slot) => {
                     // Assignment is an expression — leave the value on top so
                     // chained uses like `print a = 1;` work.
-                    let v = self.stack.top().clone();
+                    let v = *self.stack.top();
                     *self.stack.at_mut(base + slot as usize) = v;
                 }
                 OpCode::JmpIfFalse(offset) => {
@@ -267,7 +266,19 @@ impl VirtualMachine {
     }
 
     fn current_chunk(&self) -> &Chunk {
-        self.frames.last().expect("no active frame").source.chunk()
+        // Cached chunk pointer (no closure→function→chunk downcast).
+        self.frames.last().expect("no active frame").chunk()
+    }
+
+    /// Push a frame and populate its cached chunk pointer from its final `Vec`
+    /// slot. The `frames` `Vec` is pre-sized to `FRAMES_MAX` and depth is capped
+    /// before any closure call, so it never reallocates mid-run.
+    fn push_frame(&mut self, source: FrameSource, base: usize) {
+        self.frames.push(CallFrame::new(source, base));
+        self.frames
+            .last_mut()
+            .expect("frame just pushed")
+            .cache_chunk();
     }
 
     fn span_at(&self, ip: usize) -> Span {
@@ -320,7 +331,7 @@ impl VirtualMachine {
     /// function, or run a native inline. The callee sits at `peek(arg_count)`
     /// with its arguments stacked above it (the overlapping-window convention).
     fn call_value(&mut self, arg_count: u8, ip: usize) -> Result<(), VirtualMachineError> {
-        if let Value::Object(obj) = self.stack.peek(arg_count as usize).clone() {
+        if let Some(obj) = self.stack.peek(arg_count as usize).as_object() {
             match obj.kind() {
                 ObjKind::Closure => return self.call_closure(obj, arg_count, ip),
                 ObjKind::Native => return self.call_native(obj, arg_count),
@@ -344,11 +355,13 @@ impl VirtualMachine {
         let instance = self
             .storage
             .add_obj(Box::new(LoxInstance::new(class.clone())));
-        *self.stack.peek_mut(arg_count as usize) = Value::Object(instance);
+        *self.stack.peek_mut(arg_count as usize) = Value::object(instance);
         // SAFETY: dispatched on ObjKind::Class.
         match unsafe { class.downcast_ref::<LoxClass>() }.method(self.init) {
-            Some(Value::Object(closure)) => self.call_closure(closure, arg_count, ip),
-            Some(_) => unreachable!("method table holds closures"),
+            Some(init) => {
+                let closure = init.as_object().expect("method table holds closures");
+                self.call_closure(closure, arg_count, ip)
+            }
             None if arg_count != 0 => {
                 Err(RuntimeError::arity(self.span_at(ip), 0, arg_count as usize).into())
             }
@@ -371,11 +384,7 @@ impl VirtualMachine {
             return Err(self.runtime(ip, "Stack overflow."));
         }
         let base = self.stack.len() - arg_count as usize - 1;
-        self.frames.push(CallFrame {
-            source: FrameSource::Closure(obj),
-            ip: 0,
-            base,
-        });
+        self.push_frame(FrameSource::Closure(obj), base);
         Ok(())
     }
 
@@ -385,7 +394,7 @@ impl VirtualMachine {
         }
         let name = self.variable_name(addr);
         // Keep the instance on the stack as a root while reading it.
-        let instance = self.stack.peek(0).clone();
+        let instance = *self.stack.peek(0);
 
         // A field shadows a method.
         if let Some(value) = self.as_instance(&instance).field(name) {
@@ -404,11 +413,18 @@ impl VirtualMachine {
 
     /// Downcast a value the caller has already confirmed is an instance.
     fn as_instance<'a>(&self, value: &'a Value) -> &'a LoxInstance {
-        let Value::Object(obj) = value else {
+        let Some(obj) = value.as_object() else {
             unreachable!("caller checked is_instance")
         };
-        // SAFETY: the caller verified the object is an instance.
-        unsafe { obj.downcast_ref::<LoxInstance>() }
+        let instance = unsafe { obj.downcast_ref::<LoxInstance>() };
+        // SAFETY: the caller verified the object is an instance. `obj` is a fresh
+        // non-owning handle reconstructed from `value`'s bits, so the borrow is
+        // tied to that temporary; widening it to `'a` is sound *structurally*
+        // (a `u64` `Value` roots nothing): the GC runs only at the dispatch safe
+        // point, `add_obj` never collects, and no opcode handler reaches a safe
+        // point while a borrow obtained here is live — so the instance cannot be
+        // freed before `'a` ends, and the collector never moves it.
+        unsafe { mem::transmute::<&LoxInstance, &'a LoxInstance>(instance) }
     }
 
     fn undefined_property(&self, name: Spur, ip: usize) -> VirtualMachineError {
@@ -417,19 +433,19 @@ impl VirtualMachine {
     }
 
     fn bind_method(&mut self, receiver: Value, method: Value) -> Value {
-        let Value::Object(closure) = method else {
+        let Some(closure) = method.as_object() else {
             panic!("method table holds a non-closure")
         };
         let bound = self
             .storage
             .add_obj(Box::new(LoxBoundMethod::new(receiver, closure)));
-        Value::Object(bound)
+        Value::object(bound)
     }
 
     fn define_method(&mut self, addr: Addr) {
         let name = self.variable_name(addr);
         let method = self.stack.pop();
-        let Value::Object(class) = self.stack.peek(0) else {
+        let Some(class) = self.stack.peek(0).as_object() else {
             panic!("OP_METHOD expects a class beneath the method")
         };
         // SAFETY: the compiler emits OP_METHOD only with a class on the stack.
@@ -441,7 +457,7 @@ impl VirtualMachine {
             return Err(self.runtime(ip, "Only instances have methods."));
         }
         let name = self.variable_name(addr);
-        let receiver = self.stack.peek(arg_count as usize).clone();
+        let receiver = *self.stack.peek(arg_count as usize);
 
         // A field shadowing a method is called as an ordinary value.
         if let Some(field) = self.as_instance(&receiver).field(name) {
@@ -449,23 +465,25 @@ impl VirtualMachine {
             return self.call_value(arg_count, ip);
         }
         match self.as_instance(&receiver).find_method(name) {
-            Some(Value::Object(closure)) => self.call_closure(closure, arg_count, ip),
-            Some(_) => unreachable!("method table holds closures"),
+            Some(method) => {
+                let closure = method.as_object().expect("method table holds closures");
+                self.call_closure(closure, arg_count, ip)
+            }
             None => Err(self.undefined_property(name, ip)),
         }
     }
 
     fn inherit(&mut self, ip: usize) -> Result<(), VirtualMachineError> {
         // Stack: [.., superclass, subclass].
-        let superclass = self.stack.peek(1).clone();
-        let Value::Object(super_obj) = &superclass else {
+        let superclass = *self.stack.peek(1);
+        let Some(super_obj) = superclass.as_object() else {
             return Err(self.runtime(ip, "Superclass must be a class."));
         };
         if super_obj.kind() != ObjKind::Class {
             return Err(self.runtime(ip, "Superclass must be a class."));
         }
-        let subclass = self.stack.peek(0).clone();
-        let Value::Object(sub_obj) = &subclass else {
+        let subclass = *self.stack.peek(0);
+        let Some(sub_obj) = subclass.as_object() else {
             unreachable!("the compiler always emits a class as the subclass")
         };
         // SAFETY: super_obj is a class (checked); sub_obj is a class (compiler).
@@ -479,7 +497,7 @@ impl VirtualMachine {
     fn pop_super_method(&mut self, addr: Addr, ip: usize) -> Result<Value, VirtualMachineError> {
         let name = self.variable_name(addr);
         let superclass = self.stack.pop();
-        let Value::Object(super_obj) = &superclass else {
+        let Some(super_obj) = superclass.as_object() else {
             unreachable!("the compiler always loads a class for super")
         };
         // SAFETY: a `super` local always holds a class.
@@ -491,7 +509,7 @@ impl VirtualMachine {
     fn get_super(&mut self, addr: Addr, ip: usize) -> Result<(), VirtualMachineError> {
         // Stack: [.., receiver, superclass]; pop the class, bind to the receiver.
         let method = self.pop_super_method(addr, ip)?;
-        let receiver = self.stack.peek(0).clone();
+        let receiver = *self.stack.peek(0);
         let bound = self.bind_method(receiver, method);
         self.stack.pop(); // receiver
         self.stack.push(bound);
@@ -505,7 +523,7 @@ impl VirtualMachine {
         ip: usize,
     ) -> Result<(), VirtualMachineError> {
         // Stack: [.., receiver, args.., superclass]; pop the class, call directly.
-        let Value::Object(closure) = self.pop_super_method(addr, ip)? else {
+        let Some(closure) = self.pop_super_method(addr, ip)?.as_object() else {
             unreachable!("method table holds closures")
         };
         self.call_closure(closure, arg_count, ip)
@@ -519,7 +537,7 @@ impl VirtualMachine {
     ) -> Result<(), VirtualMachineError> {
         // SAFETY: dispatched on ObjKind::BoundMethod.
         let bound = unsafe { obj.downcast_ref::<LoxBoundMethod>() };
-        let receiver = bound.receiver().clone();
+        let receiver = *bound.receiver();
         let method = bound.method().clone();
         // The receiver becomes slot 0 (`this`) of the method's frame.
         *self.stack.peek_mut(arg_count as usize) = receiver;
@@ -531,9 +549,9 @@ impl VirtualMachine {
             return Err(self.runtime(ip, "Only instances have fields."));
         }
         let name = self.variable_name(addr);
-        let value = self.stack.peek(0).clone();
-        let instance = self.stack.peek(1).clone();
-        self.as_instance(&instance).set_field(name, value.clone());
+        let value = *self.stack.peek(0);
+        let instance = *self.stack.peek(1);
+        self.as_instance(&instance).set_field(name, value);
         self.stack.pop(); // value
         self.stack.pop(); // instance
         self.stack.push(value);
@@ -544,12 +562,12 @@ impl VirtualMachine {
     /// upvalue from its `(is_local, index)` tail: a local of the current frame
     /// (`base + index`) or an upvalue of the current closure.
     fn make_closure(&mut self, addr: Addr, base: usize) {
-        let function = match self.current_chunk().constant(addr) {
-            Value::Object(obj) => obj.clone(),
-            other => panic!("OP_CLOSURE constant is not an object: {other:?}"),
+        let function = match self.current_chunk().constant(addr).as_object() {
+            Some(obj) => obj,
+            None => panic!("OP_CLOSURE constant is not an object"),
         };
         let count = self.current_chunk().closure_upvalue_count(addr);
-        let mut upvalues = Vec::with_capacity(count);
+        let mut upvalues: SmallVec<[UnsafeRef<Object>; 8]> = SmallVec::with_capacity(count);
         for _ in 0..count {
             let is_local = self.read_byte() != 0;
             let index = self.read_byte();
@@ -560,16 +578,18 @@ impl VirtualMachine {
             };
             upvalues.push(upvalue);
         }
-        let closure = LoxClosure::new(function, upvalues.into_boxed_slice());
-        let obj = self.storage.add_obj(Box::new(closure));
-        self.stack.push(Value::Object(obj));
+        // `LoxClosure` stores its upvalues inline (a DST), so it is one
+        // allocation: the captures are gathered above (each already rooted in
+        // `open_upvalues`), then copied into the closure's tail.
+        let obj = self.storage.add_obj(LoxClosure::boxed(function, &upvalues));
+        self.stack.push(Value::object(obj));
     }
 
     /// Read one operand byte from the current frame's code, advancing its ip.
     /// Used for the `OP_CLOSURE` upvalue tail.
     fn read_byte(&mut self) -> u8 {
         let frame = self.frames.last_mut().expect("active frame");
-        let byte = frame.source.code()[frame.ip];
+        let byte = frame.code()[frame.ip];
         frame.ip += 1;
         byte
     }
@@ -600,7 +620,7 @@ impl VirtualMachine {
             let upvalue = unsafe { handle.downcast_ref::<LoxUpvalue>() };
             match upvalue.open_index() {
                 Some(index) if index >= from => {
-                    let value = self.stack.at(index).clone();
+                    let value = *self.stack.at(index);
                     upvalue.close(value);
                     self.open_upvalues.swap_remove(i);
                 }
@@ -624,7 +644,7 @@ impl VirtualMachine {
         // SAFETY: a closure's upvalue array holds LoxUpvalue handles.
         let upvalue = unsafe { handle.downcast_ref::<LoxUpvalue>() };
         match upvalue.open_index() {
-            Some(index) => self.stack.at(index).clone(),
+            Some(index) => *self.stack.at(index),
             None => upvalue
                 .closed_value()
                 .expect("closed upvalue holds a value"),
@@ -676,15 +696,18 @@ impl VirtualMachine {
     fn equal(&mut self) {
         let b = self.stack.pop();
         let a = self.stack.pop();
-        let res = match (&a, &b) {
-            // Fast path for interned symbols: cheap Spur equality.
-            (Value::Symbol(x), Value::Symbol(y)) => x == y,
-            // A Symbol and a heap LoxString with equal text compare equal — the
-            // one case plain `==` misses (it short-circuits on the discriminant).
-            _ if a.is_str() && b.is_str() => a.as_str(&self.storage) == b.as_str(&self.storage),
-            // Everything else (object identity, type mismatch, primitives) is
-            // exactly `Value`'s `PartialEq`.
-            _ => a == b,
+        // `PartialEq` settles bit-identity in one comparison: same number (IEEE),
+        // nil, bool, the same interned symbol, the same object. If that fails, two
+        // *distinct* symbols still can't be equal — interning makes a distinct
+        // `Spur` imply distinct text — so we skip the text compare. Only a string
+        // pair that isn't two symbols (a `Symbol` vs a heap `LoxString`, or two
+        // `LoxString`s) needs the text fallback that plain `==` misses.
+        let res = if a == b {
+            true
+        } else if a.is_symbol() && b.is_symbol() {
+            false
+        } else {
+            a.is_str() && b.is_str() && a.as_str(&self.storage) == b.as_str(&self.storage)
         };
         self.stack.push(Value::boolean(res));
     }
@@ -699,7 +722,7 @@ impl VirtualMachine {
         let obj = self.storage.add_obj(concatenated);
         self.stack.pop();
         self.stack.pop();
-        self.stack.push(Value::Object(obj));
+        self.stack.push(Value::object(obj));
     }
 
     fn with_variable<T>(
@@ -710,15 +733,15 @@ impl VirtualMachine {
         // Value stays on the stack across `f` so it remains a GC root if a
         // future collector triggers during a globals rehash.
         let key = self.variable_name(addr);
-        let value = self.stack.top().clone();
+        let value = *self.stack.top();
         f(self, key, value)
     }
 
     fn variable_name(&self, addr: Addr) -> Spur {
-        let Value::Symbol(key) = self.current_chunk().constant(addr) else {
+        let Some(key) = self.current_chunk().constant(addr).as_symbol() else {
             panic!("could not get variable name: constant slot is not a Symbol")
         };
-        *key
+        key
     }
 
     fn trace(&self, op: OpCode) {

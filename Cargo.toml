@@ -7,6 +7,19 @@ name = "rlox"
 version = "0.1.0"
 edition = "2024"
 
+# Release: full cross-crate inlining (the VM dispatch loop, decode, and Value ops
+# live in the `vm` crate and benefit heavily from being inlined together) and a
+# single codegen unit. Roughly a free win with no source changes.
+[profile.release]
+lto = "fat"
+codegen-units = 1
+
+# The `bench` profile inherits from `release`, so it already picks up `lto` and
+# `codegen-units` above; only `debug = true` (kept for samply symbols) needs
+# overriding here.
+[profile.bench]
+debug = true
+
 [dependencies]
 report = { path = "report" }
 tree-walk = { path = "tree-walk" }

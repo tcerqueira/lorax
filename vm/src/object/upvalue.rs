@@ -46,7 +46,7 @@ impl LoxUpvalue {
     /// The owned value once closed, else `None`.
     pub fn closed_value(&self) -> Option<Value> {
         match &*self.state.borrow() {
-            UpvalueState::Closed(value) => Some(value.clone()),
+            UpvalueState::Closed(value) => Some(*value),
             UpvalueState::Open(_) => None,
         }
     }

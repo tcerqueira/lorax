@@ -23,8 +23,8 @@ pub struct Tracer {
 
 impl Tracer {
     pub fn mark_value(&mut self, value: &Value) {
-        if let Value::Object(obj) = value {
-            self.mark_obj(obj);
+        if let Some(obj) = value.as_object() {
+            self.mark_obj(&obj);
         }
     }
 

@@ -487,7 +487,7 @@ impl<'s, 't> Compiler<'s, 't> {
         } = self.targets.pop().expect("function target");
         let func = LoxFunction::new(name, arity, upvalues.len() as u16, chunk);
         let obj = self.storage.add_obj(Box::new(func));
-        let addr = self.add_constant(Value::Object(obj))?;
+        let addr = self.add_constant(Value::object(obj))?;
         // Wrap the function in a closure at runtime; the trailing bytes tell the
         // VM where each captured upvalue comes from.
         self.emit_op_and_line(line, OpCode::Closure(addr));
@@ -1477,7 +1477,7 @@ mod tests {
         let numbers = chunk
             .constants
             .iter()
-            .filter(|v| matches!(v, Value::Number(_)))
+            .filter(|v| v.is_number())
             .count();
         assert_eq!(numbers, 1);
     }
@@ -1488,7 +1488,7 @@ mod tests {
         let symbols = chunk
             .constants
             .iter()
-            .filter(|v| matches!(v, Value::Symbol(_)))
+            .filter(|v| v.is_symbol())
             .count();
         assert_eq!(symbols, 1);
     }

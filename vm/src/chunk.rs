@@ -89,9 +89,9 @@ impl Chunk {
     /// operand is `addr` — read from the wrapped function. Used to step past the
     /// tail when walking the code (disassembler) or building the closure (VM).
     pub fn closure_upvalue_count(&self, addr: Addr) -> usize {
-        match self.constant(addr) {
+        match self.constant(addr).as_object() {
             // SAFETY: a Closure op's constant is always a LoxFunction.
-            Value::Object(obj) if obj.kind() == ObjKind::Function => {
+            Some(obj) if obj.kind() == ObjKind::Function => {
                 unsafe { obj.downcast_ref::<LoxFunction>() }.upvalue_count() as usize
             }
             _ => 0,
