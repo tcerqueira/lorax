@@ -1,5 +1,10 @@
-// This benchmark stresses both field and method lookup.
-
+// Properties. Stresses both field lookup and method lookup on instances: thirty
+// trivial getters, each reading a distinct field, exercise the instance
+// property/method resolution path repeatedly.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the loop count is scaled from 500,000 down to 40,000 so a single
+// sample stays in the tens-of-ms range.
 class Foo {
   init() {
     this.field0 = 1;
@@ -67,9 +72,8 @@ class Foo {
 }
 
 var foo = Foo();
-var start = clock();
 var i = 0;
-while (i < 500000) {
+while (i < 40000) {
   foo.method0();
   foo.method1();
   foo.method2();
@@ -102,5 +106,3 @@ while (i < 500000) {
   foo.method29();
   i = i + 1;
 }
-
-print clock() - start;

@@ -34,6 +34,24 @@ cargo test --test <backend> <module>::<test_name>   # Single test
 
 114 tree-walk tests are `#[ignore]` for unimplemented features (classes, `this`, `super`, some resolver checks). The VM (`tests/vm.rs`) implements the full language; only 6 cases stay `#[ignore]`, all intentional semantic deviations from the book (same-scope shadowing is legal, so `var a = a + 1;` rebinds the previous `a`; constants are deduplicated; there is no AST-dump `parse` mode). Run the whole VM suite with `LORAX_STRESS_GC=1` to collect on every instruction — the strongest GC check.
 
+## Benchmarks
+
+Criterion benchmarks live in `benches/benchmarks.rs` (a `harness = false` bench target of the root `rlox` crate); the Lox programs are in `benches/sources/`. The harness drives both backends in-process (no subprocess), embedding each source via `include_str!`. Sources split into two sets in the harness: `PORTABLE` (uses only the shared feature subset — runs on both backends) and `VM_ONLY` (classes/inheritance — VM only). Three groups:
+
+- `compile` — source → `Chunk` (VM single-pass compiler), every program.
+- `vm` — full compile+execute on the VM, every program.
+- `tree_walk` — full scan→parse→resolve→interpret on the tree-walk backend, portable programs only.
+
+To compare a backend on a program, line up `vm/<name>` against `tree_walk/<name>`; both time the whole source-string-to-result pipeline on a freshly built interpreter, so they're symmetric.
+
+```bash
+cargo bench --bench benchmarks                       # Everything (~minutes)
+cargo bench --bench benchmarks -- 'tree_walk|vm'     # Just the backend comparison
+cargo bench --bench benchmarks -- fib                # One program, all groups
+```
+
+The sources are adapted from the book's `test/benchmark/` suite plus a few new ones (`closures`, `string_concat`, `mutual_recursion`, `arithmetic`, `loops`): `clock()`/`print` self-timing is stripped, and the portable workloads are sized so the *slower* tree-walk backend lands in the tens-of-ms range (the VM then runs them in a few ms). The book's time-based `zoo_batch` is omitted (incompatible with criterion). As of the last run the VM is ~3.5–6.6× faster than tree-walk across the portable programs. Do **not** set `LORAX_STRESS_GC` while benchmarking. Results land in `target/criterion/` (gitignored).
+
 ## Workspace Crates
 
 | Crate | Purpose |

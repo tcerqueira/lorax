@@ -1,0 +1,18 @@
+// Closures. Stresses closure allocation and upvalue capture/mutation: each
+// iteration builds a fresh counter closure over a captured local and invokes it
+// several times. This is a sharp backend contrast — the VM captures by upvalue
+// while the tree-walk interpreter clones its environment chain per closure.
+fun makeCounter() {
+  var count = 0;
+  fun increment() {
+    count = count + 1;
+    return count;
+  }
+  return increment;
+}
+
+var sum = 0;
+for (var i = 0; i < 45000; i = i + 1) {
+  var counter = makeCounter();
+  sum = sum + counter() + counter() + counter();
+}

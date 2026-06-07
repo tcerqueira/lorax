@@ -1,0 +1,10 @@
+// Nested loops. Stresses the purest interpreter overhead: loop condition checks,
+// jumps, and local-variable reads/writes, with only a trivial integer add as the
+// body. No calls, no recursion, no allocation — the closest thing to a measure
+// of cost-per-bytecode (VM) versus cost-per-AST-node (tree-walk).
+var sum = 0;
+for (var i = 0; i < 500; i = i + 1) {
+  for (var j = 0; j < 500; j = j + 1) {
+    sum = sum + 1;
+  }
+}

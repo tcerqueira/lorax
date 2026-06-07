@@ -1,0 +1,12 @@
+// Arithmetic. Stresses the numeric-operator path and loop overhead with no
+// function calls or allocation: a Leibniz-series approximation of pi does a
+// float divide, add, multiply, and negate every iteration. This isolates raw
+// compute throughput from the call/dispatch machinery the other benchmarks lean
+// on.
+var pi = 0;
+var sign = 1;
+for (var i = 0; i < 120000; i = i + 1) {
+  pi = pi + sign / (2 * i + 1);
+  sign = -sign;
+}
+pi = pi * 4;

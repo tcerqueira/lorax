@@ -1,0 +1,18 @@
+// Mutual recursion. Stresses cross-function calls and global-function lookup:
+// `isEven`/`isOdd` bounce through each other, so every query walks a chain of
+// alternating calls. Recursion depth is held at 40 (well under the VM's 64-frame
+// cap); the outer loop repeats the query to make the call volume the cost.
+fun isEven(n) {
+  if (n == 0) return true;
+  return isOdd(n - 1);
+}
+
+fun isOdd(n) {
+  if (n == 0) return false;
+  return isEven(n - 1);
+}
+
+var count = 0;
+for (var i = 0; i < 7000; i = i + 1) {
+  if (isEven(40)) count = count + 1;
+}

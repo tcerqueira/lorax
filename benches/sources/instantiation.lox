@@ -1,0 +1,45 @@
+// Instantiation. Stresses instance allocation, initializer dispatch, and the
+// garbage collector: every `Foo()` produces an instance that is immediately
+// unreachable, so the heap churns constantly.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the loop count is scaled from 500,000 down to 20,000 (still
+// 600,000 instantiations) so a single sample stays in the tens-of-ms range.
+class Foo {
+  init() {}
+}
+
+var i = 0;
+while (i < 20000) {
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  Foo();
+  i = i + 1;
+}

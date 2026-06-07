@@ -1,0 +1,14 @@
+// String concatenation. Stresses runtime string allocation: every iteration
+// concatenates several short strings into a fresh heap string that is then
+// discarded, churning the allocator (and, on the VM, the GC). No quadratic
+// growth — each result is the same length — so the cost is per-concat, not the
+// string getting longer.
+var a = "abcdefgh";
+var b = "12345678";
+var c = "ABCDEFGH";
+var d = "!@#$%^&*";
+
+var s = "";
+for (var i = 0; i < 120000; i = i + 1) {
+  s = a + b + c + d;
+}

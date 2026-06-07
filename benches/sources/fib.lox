@@ -1,0 +1,13 @@
+// Recursive Fibonacci. Stresses function-call overhead: frame setup/teardown,
+// argument passing, recursion depth, plus integer arithmetic and comparison.
+//
+// Adapted from the Crafting Interpreters benchmark: the `clock()`/`print`
+// timing scaffold is dropped (criterion times the whole compile+run) and the
+// argument is scaled from 35 down to 25 so even the slower tree-walk backend
+// stays in the tens-of-ms range.
+fun fib(n) {
+  if (n < 2) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+fib(25);

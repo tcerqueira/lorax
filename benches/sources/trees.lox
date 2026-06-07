@@ -1,0 +1,34 @@
+// Five-ary trees. Stresses field reads and recursive method dispatch over a
+// large, long-lived object graph: the tree is built once, then walked many
+// times so traversal (not allocation) dominates.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the depth is scaled from 8 down to 6 (and the walk count from 100
+// down to 50) so a single sample stays in the tens-of-ms range.
+class Tree {
+  init(depth) {
+    this.depth = depth;
+    if (depth > 0) {
+      this.a = Tree(depth - 1);
+      this.b = Tree(depth - 1);
+      this.c = Tree(depth - 1);
+      this.d = Tree(depth - 1);
+      this.e = Tree(depth - 1);
+    }
+  }
+
+  walk() {
+    if (this.depth == 0) return 0;
+    return this.depth
+        + this.a.walk()
+        + this.b.walk()
+        + this.c.walk()
+        + this.d.walk()
+        + this.e.walk();
+  }
+}
+
+var tree = Tree(6);
+for (var i = 0; i < 50; i = i + 1) {
+  tree.walk();
+}

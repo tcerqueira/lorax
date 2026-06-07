@@ -1,3 +1,10 @@
+// Method calls with inheritance. Stresses virtual-ish dispatch through a
+// subclass, `super` calls, and method chaining (`activate().value()`), mixing
+// field mutation with bound-method returns.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the per-loop count `n` is scaled from 100,000 down to 20,000 so a
+// single sample stays in the tens-of-ms range.
 class Toggle {
   init(startState) {
     this.state = startState;
@@ -29,8 +36,7 @@ class NthToggle < Toggle {
   }
 }
 
-var start = clock();
-var n = 100000;
+var n = 20000;
 var val = true;
 var toggle = Toggle(val);
 
@@ -47,8 +53,6 @@ for (var i = 0; i < n; i = i + 1) {
   val = toggle.activate().value();
 }
 
-print toggle.value();
-
 val = true;
 var ntoggle = NthToggle(val, 3);
 
@@ -64,6 +68,3 @@ for (var i = 0; i < n; i = i + 1) {
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();
 }
-
-print ntoggle.value();
-print clock() - start;

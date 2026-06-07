@@ -1,3 +1,10 @@
+// Zoo. Stresses monomorphic method invocation (the `OP_INVOKE` fast path) and
+// field reads in a tight loop: every iteration calls six getters on the same
+// receiver.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the open-ended `sum < 10000000` cutoff becomes a fixed iteration
+// count so the workload is deterministic and stays in the tens-of-ms range.
 class Zoo {
   init() {
     this.aarvark  = 1;
@@ -17,8 +24,7 @@ class Zoo {
 
 var zoo = Zoo();
 var sum = 0;
-var start = clock();
-while (sum < 10000000) {
+for (var i = 0; i < 150000; i = i + 1) {
   sum = sum + zoo.ant()
             + zoo.banana()
             + zoo.tuna()
@@ -26,6 +32,3 @@ while (sum < 10000000) {
             + zoo.grass()
             + zoo.mouse();
 }
-
-print sum;
-print clock() - start;

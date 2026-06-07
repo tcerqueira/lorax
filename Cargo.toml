@@ -13,3 +13,13 @@ tree-walk = { path = "tree-walk" }
 vm = { path = "vm" }
 thiserror = "2"
 anyhow = "1"
+
+[dev-dependencies]
+# `lexer` is only needed by the benchmark harness (it drives the compiler
+# directly); `report` and `vm` come in as normal dependencies above.
+lexer = { path = "lexer" }
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false

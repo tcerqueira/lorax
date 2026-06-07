@@ -1,3 +1,10 @@
+// Binary trees. Stresses object allocation and the garbage collector: builds
+// and checksums a huge number of short-lived `Tree` instances alongside one
+// long-lived tree, exercising recursive constructors and methods.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and `maxDepth` is scaled from 14 down to 9 so a single sample stays
+// in the tens-of-ms range while still generating meaningful GC pressure.
 class Tree {
   init(item, depth) {
     this.item = item;
@@ -23,15 +30,10 @@ class Tree {
 }
 
 var minDepth = 4;
-var maxDepth = 14;
+var maxDepth = 9;
 var stretchDepth = maxDepth + 1;
 
-var start = clock();
-
-print "stretch tree of depth:";
-print stretchDepth;
-print "check:";
-print Tree(0, stretchDepth).check();
+Tree(0, stretchDepth).check();
 
 var longLivedTree = Tree(0, maxDepth);
 
@@ -52,20 +54,8 @@ while (depth < stretchDepth) {
     i = i + 1;
   }
 
-  print "num trees:";
-  print iterations * 2;
-  print "depth:";
-  print depth;
-  print "check:";
-  print check;
-
   iterations = iterations / 4;
   depth = depth + 2;
 }
 
-print "long lived tree of depth:";
-print maxDepth;
-print "check:";
-print longLivedTree.check();
-print "elapsed:";
-print clock() - start;
+longLivedTree.check();

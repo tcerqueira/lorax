@@ -1,5 +1,10 @@
-// This benchmark stresses just method invocation.
-
+// Invocation. Stresses just method invocation: thirty empty methods called on
+// the same receiver, isolating call dispatch and frame setup/teardown from any
+// real work in the method body.
+//
+// Adapted from the Crafting Interpreters benchmark: `clock()`/`print` are
+// dropped and the loop count is scaled from 500,000 down to 40,000 (still
+// 1,200,000 calls) so a single sample stays in the tens-of-ms range.
 class Foo {
   method0() {}
   method1() {}
@@ -34,9 +39,8 @@ class Foo {
 }
 
 var foo = Foo();
-var start = clock();
 var i = 0;
-while (i < 500000) {
+while (i < 40000) {
   foo.method0();
   foo.method1();
   foo.method2();
@@ -69,5 +73,3 @@ while (i < 500000) {
   foo.method29();
   i = i + 1;
 }
-
-print clock() - start;
