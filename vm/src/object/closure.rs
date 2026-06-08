@@ -41,6 +41,15 @@ impl LoxClosure {
     /// and each upvalue handle are copied into the tail.
     pub fn boxed(function: UnsafeRef<Object>, upvalues: &[UnsafeRef<Object>]) -> Box<Self> {
         let len = upvalues.len();
+        // The inline upvalue count is the authority for both upvalue reads and GC
+        // tracing, so it must match the count the wrapped function declared (which
+        // sized the `OP_CLOSURE` tail and the upvalue-read slots).
+        // SAFETY: a closure always wraps a `LoxFunction`.
+        debug_assert_eq!(
+            len,
+            unsafe { function.downcast_ref::<LoxFunction>() }.upvalue_count() as usize,
+            "closure upvalue count must match the wrapped function's declared count",
+        );
         // SAFETY: `Box::new_slice_dst` allocates `Self::layout_for(len)` and hands
         // us a fully-uninitialized pointer. Every field is written exactly once
         // via `ptr::write` (no `Drop` of uninitialized data), and the tail is

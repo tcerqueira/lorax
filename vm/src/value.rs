@@ -27,11 +27,22 @@ pub struct ValueError;
 /// * **Symbol** — `QNAN | SYMBOL_TAG | spur`; `Spur`'s index fits the low 32 bits,
 ///   well clear of `SYMBOL_TAG` at bit 48.
 /// * **Object** — `SIGN | QNAN | addr`; the heap pointer lives in the low 48 bits
-///   (a userspace-pointer assumption, `debug_assert`ed), stored and recovered
-///   through the *exposed-provenance* API so the int↔ptr round-trip is sound.
+///   (a userspace-pointer assumption, `assert`ed in [`object`](Value::object)),
+///   stored and recovered through the *exposed-provenance* API so the int↔ptr
+///   round-trip is sound.
 ///
 /// `Value` owns nothing — an `Object` payload is a non-owning handle into the GC
 /// heap, exactly like the former `UnsafeRef`-in-enum representation.
+///
+/// **Known limitation (same as clox's NaN-boxing):** the partition assumes no
+/// `f64` ever reaches a `Value` with both mantissa bits 51 and 50 set, since that
+/// pattern aliases the `Nil`/`Bool`/`Symbol`/`Object` tags. IEEE-754 hardware
+/// arithmetic and Lox literals only ever produce the canonical quiet NaN
+/// `0x7ff8…` (bit 50 clear), so this holds on x86-64 and AArch64. The one place
+/// untrusted bytes could inject an arbitrary `f64` — chunk deserialization —
+/// rejects a non-number NaN at the boundary (`chunk::serde`). Minting a
+/// `Value::number` from arbitrary bits on an exotic target is the only way to
+/// break it.
 #[derive(Clone, Copy)]
 pub struct Value(u64);
 
@@ -73,7 +84,13 @@ impl Value {
     }
 
     pub fn symbol(key: Spur) -> Self {
-        Value(QNAN | SYMBOL_TAG | (key.into_usize() as u64 & SPUR_MASK))
+        let idx = key.into_usize() as u64;
+        // A `Spur` index always fits the low 32 bits (the interner holds far
+        // fewer than 2^32 strings); assert it so a future wider key can't be
+        // silently truncated into the symbol payload — mirroring `object`'s
+        // 48-bit pointer assert.
+        debug_assert!(idx & !SPUR_MASK == 0, "Spur index exceeds 32 bits");
+        Value(QNAN | SYMBOL_TAG | (idx & SPUR_MASK))
     }
 
     pub fn object(value: UnsafeRef<Object>) -> Self {
@@ -100,10 +117,6 @@ impl Value {
 
     pub fn is_nil(&self) -> bool {
         self.0 == TAG_NIL
-    }
-
-    pub fn is_boolean(&self) -> bool {
-        self.0 == TAG_TRUE || self.0 == TAG_FALSE
     }
 
     pub fn is_symbol(&self) -> bool {
@@ -151,9 +164,12 @@ impl Value {
         self.is_object().then(|| {
             let ptr = ptr::with_exposed_provenance::<Object>((self.0 & PAYLOAD_MASK) as usize);
             // SAFETY: the address was produced from a live object handle in
-            // `object()` (its provenance exposed there); the value keeps the
-            // object rooted, so the pointer is valid. `UnsafeRef` is non-owning,
-            // so materializing one here does not affect ownership.
+            // `object()` (its provenance was exposed there), and `UnsafeRef` is
+            // non-owning so this doesn't affect ownership. The object is still
+            // alive not because a `u64` `Value` roots it (it roots nothing) but
+            // structurally: the GC collects only at the dispatch safe point and
+            // `add_obj` never collects, so nothing is freed between a caller
+            // obtaining this handle and finishing with it.
             unsafe { UnsafeRef::from_raw(ptr) }
         })
     }
@@ -276,13 +292,13 @@ impl PartialEq for Value {
 
 impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Only numbers are ordered. `<`/`>`/`<=`/`>=` on anything else — including
+        // two booleans or two nils — is a runtime error in Lox, so return `None`
+        // and let `greater`/`less` surface it as `ValueError` ("Operands must be
+        // numbers."). (Returning `Some` for bool/nil here was a latent deviation.)
         match (self.as_number(), other.as_number()) {
             (Some(a), Some(b)) => a.partial_cmp(&b),
-            _ => match (self.as_boolean(), other.as_boolean()) {
-                (Some(a), Some(b)) => a.partial_cmp(&b),
-                _ if self.is_nil() && other.is_nil() => Some(Ordering::Equal),
-                _ => None,
-            },
+            _ => None,
         }
     }
 }
@@ -353,7 +369,7 @@ mod tests {
         for n in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 0.0, -0.0, 1e308] {
             let v = Value::number(n);
             assert!(v.is_number(), "{n} should be a number");
-            assert!(!v.is_object() && !v.is_symbol() && !v.is_nil() && !v.is_boolean());
+            assert!(!v.is_object() && !v.is_symbol() && !v.is_nil() && v.as_boolean().is_none());
         }
         // NaN != NaN, but -0.0 == 0.0.
         assert_ne!(Value::number(f64::NAN), Value::number(f64::NAN));

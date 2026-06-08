@@ -56,6 +56,15 @@ pub enum OpCode {
     GetSuper(Addr) = 0x25,
     /// Fused super-method get + call: method-name constant, arg count.
     SuperInvoke(Addr, u8) = 0x26,
+    /// `JmpIfFalse` that also pops its condition (whether or not it jumps). The
+    /// compiler emits this for `if`/`while`/`for` tests, where the condition is
+    /// discarded — saving the separate `Pop` on both the taken and fall-through
+    /// paths. (`and`/`or` keep `JmpIfFalse`/`JmpIfTrue`, which *peek* so the
+    /// operand can become the expression's value.)
+    JmpIfFalsePop(Offset) = 0x27,
+    /// Peeking jump taken when the condition is truthy — the mirror of
+    /// `JmpIfFalse`, so `or` short-circuits with one jump like `and`.
+    JmpIfTrue(Offset) = 0x28,
 }
 
 pub type Slot = u8;
@@ -142,6 +151,8 @@ impl OpCode {
             0x24 => OpCode::Inherit,
             0x25 => OpCode::GetSuper(next_u8(code, ip)?),
             0x26 => OpCode::SuperInvoke(next_u8(code, ip)?, next_u8(code, ip)?),
+            0x27 => OpCode::JmpIfFalsePop(next_offset(code, ip)?),
+            0x28 => OpCode::JmpIfTrue(next_offset(code, ip)?),
             unknown => return Err(DecodeError::UnknownOpCode(unknown)),
         };
         Ok(op)
@@ -203,6 +214,14 @@ impl Encode for OpCode {
             OpCode::Inherit => write(&[0x24]),
             OpCode::GetSuper(addr) => write(&[0x25, *addr]),
             OpCode::SuperInvoke(addr, arg_count) => write(&[0x26, *addr, *arg_count]),
+            OpCode::JmpIfFalsePop(offset) => {
+                let buf = offset.to_le_bytes();
+                write(&[0x27, buf[0], buf[1]])
+            }
+            OpCode::JmpIfTrue(offset) => {
+                let buf = offset.to_le_bytes();
+                write(&[0x28, buf[0], buf[1]])
+            }
         }
     }
 }

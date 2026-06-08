@@ -66,9 +66,11 @@ impl CallFrame {
         }
     }
 
-    /// Populate the cached chunk pointer from `source`'s final location. Must run
-    /// after the frame is in its `Vec` slot (so `source` will not move again) and
-    /// before the frame executes.
+    /// Populate the cached chunk pointer from `source`. The pointer targets the
+    /// chunk *inside the heap object* — a `Closure`'s `LoxFunction`, or the boxed
+    /// `TopLevel` chunk — which is heap-stable, so this only needs `source` to be
+    /// initialized; moving the `CallFrame` within the frames `Vec` afterwards does
+    /// not invalidate it. Must run before the frame executes.
     pub fn cache_chunk(&mut self) {
         let ptr = self.source.chunk() as *const Chunk;
         self.chunk = ptr;

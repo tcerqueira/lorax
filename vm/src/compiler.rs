@@ -595,13 +595,13 @@ impl<'s, 't> Compiler<'s, 't> {
             .consume(TokenType::RightParen)
             .context("expect ')' after condition.")?;
 
-        let then_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
-        self.emit_pops(1);
+        // `JmpIfFalsePop` discards the condition on both paths, so no separate
+        // `Pop` is needed around either branch.
+        let then_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalsePop(0));
         self.statement()?;
 
         let else_jmp = self.emit_jmp(OpCode::Jmp(0));
         self.patch_jmp(then_jmp)?;
-        self.emit_pops(1);
 
         if self.advance_if(TokenType::Else)?.is_some() {
             self.statement()?;
@@ -622,13 +622,11 @@ impl<'s, 't> Compiler<'s, 't> {
             .consume(TokenType::RightParen)
             .context("Expect ')' after 'condition'.")?;
 
-        let exit_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
-        self.emit_op_and_line(tok.line(), OpCode::Pop);
+        let exit_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalsePop(0));
         self.statement()?;
         self.emit_loop(loop_start)?;
 
         self.patch_jmp(exit_jmp)?;
-        self.emit_pops(1);
         Ok(())
     }
 
@@ -657,8 +655,7 @@ impl<'s, 't> Compiler<'s, 't> {
             let tok = this
                 .consume(TokenType::Semicolon)
                 .context("Expect ';' after a loop condition.")?;
-            let exit_jmp = this.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
-            this.emit_pops(1);
+            let exit_jmp = this.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalsePop(0));
             Some(exit_jmp)
         } else {
             None
@@ -682,7 +679,6 @@ impl<'s, 't> Compiler<'s, 't> {
 
         if let Some(exit_jmp) = exit_jmp {
             this.patch_jmp(exit_jmp)?;
-            this.emit_pops(1);
         }
         Ok(())
     }
@@ -1036,15 +1032,15 @@ impl<'s, 't> Compiler<'s, 't> {
         let (_l_bp, r_bp) = infix_bp(tok.ty()).expect("expected infix op token");
         self.materialize(lhs);
 
-        let else_jmp = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfFalse(0));
-        let end_jmp = self.emit_jmp_and_line(tok.line(), OpCode::Jmp(0));
-
-        self.patch_jmp(else_jmp)?;
+        // Mirror `and` exactly, just with the opposite test: a single
+        // conditional jump (`JmpIfTrue`) short-circuits to the result, so `or`
+        // is no slower than `and` (two jumps + a pop before).
+        let short_circuit = self.emit_jmp_and_line(tok.line(), OpCode::JmpIfTrue(0));
         self.emit_op_and_line(tok.line(), OpCode::Pop);
 
         let rhs = self.parse_bp(r_bp)?;
         self.materialize(rhs);
-        self.patch_jmp(end_jmp)?;
+        self.patch_jmp(short_circuit)?;
 
         Ok(Handle::Value)
     }

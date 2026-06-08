@@ -190,9 +190,10 @@ impl VirtualMachine {
                     self.stack.push(constant);
                 }
                 OpCode::Neg => {
-                    let operand = self.stack.pop();
-                    match -operand {
-                        Ok(v) => self.stack.push(v),
+                    // Negate the top slot in place (like `Not`): no pop/push.
+                    let v = self.stack.top_mut();
+                    match -*v {
+                        Ok(r) => *v = r,
                         Err(_) => return Err(self.runtime(op_start, "invalid operand")),
                     }
                 }
@@ -256,6 +257,17 @@ impl VirtualMachine {
                 }
                 OpCode::JmpIfFalse(offset) => {
                     if self.stack.top().is_falsey() {
+                        self.frames[top].ip += offset as usize;
+                    }
+                }
+                OpCode::JmpIfFalsePop(offset) => {
+                    // Pop the condition unconditionally, jump if it was falsey.
+                    if self.stack.pop().is_falsey() {
+                        self.frames[top].ip += offset as usize;
+                    }
+                }
+                OpCode::JmpIfTrue(offset) => {
+                    if !self.stack.top().is_falsey() {
                         self.frames[top].ip += offset as usize;
                     }
                 }
@@ -579,8 +591,12 @@ impl VirtualMachine {
             upvalues.push(upvalue);
         }
         // `LoxClosure` stores its upvalues inline (a DST), so it is one
-        // allocation: the captures are gathered above (each already rooted in
-        // `open_upvalues`), then copied into the closure's tail.
+        // allocation. The captures gathered above are all reachable from a root
+        // when `add_obj` may collect: a local capture is pushed onto
+        // `open_upvalues` by `capture_upvalue`, and a non-local capture is an
+        // upvalue of the current closure (rooted via this frame). The `function`
+        // itself is a chunk constant. So copying them into the closure's tail is
+        // GC-safe.
         let obj = self.storage.add_obj(LoxClosure::boxed(function, &upvalues));
         self.stack.push(Value::object(obj));
     }
@@ -682,11 +698,14 @@ impl VirtualMachine {
         op: fn(Value, Value) -> Result<Value, ValueError>,
         ip: usize,
     ) -> Result<(), VirtualMachineError> {
+        // Pop only the right operand; apply the op to the left operand's slot in
+        // place, so the common arithmetic op is one pop + one write, not two pops
+        // and a push.
         let b = self.stack.pop();
-        let a = self.stack.pop();
-        match op(a, b) {
+        let a = self.stack.top_mut();
+        match op(*a, b) {
             Ok(res) => {
-                self.stack.push(res);
+                *a = res;
                 Ok(())
             }
             Err(_) => Err(self.runtime(ip, "invalid operand")),

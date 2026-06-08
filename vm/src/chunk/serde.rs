@@ -1,8 +1,8 @@
 //! Custom postcard/serde de/serialization for [`Chunk`].
 //!
-//! The constant pool's string variants are `Storage`-relative (`Value::Symbol`
-//! is an interner key, `Value::Object` a heap pointer), so the wire form can't
-//! be `#[derive]`d. Serialization borrows `&Storage` to inline the text;
+//! The constant pool's string values are `Storage`-relative (a symbol-tagged
+//! `Value` holds an interner key, an object-tagged one a heap pointer), so the
+//! wire form can't be `#[derive]`d. Serialization borrows `&Storage` to inline the text;
 //! deserialization threads `&mut Storage` via [`DeserializeSeed`] to re-intern it.
 
 use std::fmt;

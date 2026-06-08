@@ -3,8 +3,8 @@
 //! The VM gathers roots and drives collection at safe points (see
 //! `VirtualMachine::collect_garbage`); this module owns the *tracing* — which
 //! heap edges each object kind has. Sweeping lives on `Storage`, which owns the
-//! allocation list. Interned strings (`Value::Symbol`) are permanent and never
-//! traced or swept.
+//! allocation list. Interned strings (symbol-tagged `Value`s) are permanent and
+//! never traced or swept.
 
 use intrusive_collections::UnsafeRef;
 

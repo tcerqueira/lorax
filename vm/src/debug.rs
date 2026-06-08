@@ -131,6 +131,8 @@ impl OpCode {
             OpCode::SetLocal(slot) => write_args1(f, "OP_SET_LOCAL", slot),
             OpCode::PopN(n) => write_args1(f, "OP_POPN", n),
             OpCode::JmpIfFalse(offset) => write_args1(f, "OP_JMP_IF_FALSE", offset),
+            OpCode::JmpIfFalsePop(offset) => write_args1(f, "OP_JMP_IF_FALSE_POP", offset),
+            OpCode::JmpIfTrue(offset) => write_args1(f, "OP_JMP_IF_TRUE", offset),
             OpCode::Jmp(offset) => write_args1(f, "OP_JMP", offset),
             OpCode::Loop(offset) => write_args1(f, "OP_LOOP", offset),
             OpCode::Call(arg_count) => write_args1(f, "OP_CALL", arg_count),
