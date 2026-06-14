@@ -2,8 +2,6 @@ use std::io::{self, BufRead, Read, Seek, SeekFrom, Write};
 
 use thiserror::Error;
 
-use crate::value::Addr;
-
 // PERF: maybe just read bytes in VM instead of storing in the enum
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
@@ -28,16 +26,23 @@ pub enum OpCode {
     DefGlobal(Addr) = 0x11,
     GetGlobal(Addr) = 0x12,
     SetGlobal(Addr) = 0x13,
-    GetLocal(Slot) = 0x14,
-    SetLocal(Slot) = 0x15,
+    GetLocal(LocalSlot) = 0x14,
+    SetLocal(LocalSlot) = 0x15,
     PopN(u8) = 0x16,
     JmpIfFalse(Offset) = 0x17,
     Jmp(Offset) = 0x18,
     Loop(Offset) = 0x19,
+    // Call(Addr) = 0x1A,
 }
 
-pub type Slot = u8;
+pub type Addr = u8;
 pub type Offset = u16;
+
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// pub struct Slot(pub u8);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LocalSlot(pub u8);
 
 pub trait Decode: Sized {
     fn decode<R: Read + ?Sized>(reader: &mut R) -> Result<Self, DecodeError>;
@@ -123,8 +128,8 @@ impl Decode for OpCode {
             0x11 => OpCode::DefGlobal(read_one(reader)?),
             0x12 => OpCode::GetGlobal(read_one(reader)?),
             0x13 => OpCode::SetGlobal(read_one(reader)?),
-            0x14 => OpCode::GetLocal(read_one(reader)?),
-            0x15 => OpCode::SetLocal(read_one(reader)?),
+            0x14 => OpCode::GetLocal(LocalSlot(read_one(reader)?)),
+            0x15 => OpCode::SetLocal(LocalSlot(read_one(reader)?)),
             0x16 => OpCode::PopN(read_one(reader)?),
             0x17 => OpCode::JmpIfFalse(Offset::from_le_bytes(read::<2, _>(reader)?)),
             0x18 => OpCode::Jmp(Offset::from_le_bytes(read::<2, _>(reader)?)),
@@ -162,8 +167,8 @@ impl Encode for OpCode {
             OpCode::DefGlobal(addr) => write(&[0x11, *addr]),
             OpCode::GetGlobal(addr) => write(&[0x12, *addr]),
             OpCode::SetGlobal(addr) => write(&[0x13, *addr]),
-            OpCode::GetLocal(slot) => write(&[0x14, *slot]),
-            OpCode::SetLocal(slot) => write(&[0x15, *slot]),
+            OpCode::GetLocal(slot) => write(&[0x14, slot.0]),
+            OpCode::SetLocal(slot) => write(&[0x15, slot.0]),
             OpCode::PopN(n) => write(&[0x16, *n]),
             OpCode::JmpIfFalse(offset) => {
                 let buf = offset.to_le_bytes();

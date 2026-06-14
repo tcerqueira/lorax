@@ -12,12 +12,13 @@ use scopeguard::ScopeGuard;
 
 use crate::{
     chunk::Chunk,
-    compiler::{error::CompileError, scopes::Scopes},
-    enconding::{OpCode, Slot},
+    compiler::{context::LexicalContext, error::CompileError},
+    enconding::{Addr, LocalSlot, OpCode},
     storage::Storage,
-    value::{Addr, Value},
+    value::Value,
 };
 
+pub mod context;
 pub mod error;
 pub mod scopes;
 
@@ -129,7 +130,7 @@ impl Handle {
         Self::Place(Place::Global { addr, line })
     }
 
-    fn local(slot: Slot, line: u32) -> Self {
+    fn local(slot: LocalSlot, line: u32) -> Self {
         Self::Place(Place::Local { slot, line })
     }
 }
@@ -137,16 +138,15 @@ impl Handle {
 #[derive(Debug, Clone, Copy)]
 enum Place {
     Global { addr: Addr, line: u32 },
-    Local { slot: Slot, line: u32 },
+    Local { slot: LocalSlot, line: u32 },
 }
 
 pub struct Compiler<'s, 't> {
     scanner: Peekable<Scanner<'s>>,
     reporter: Reporter<'s>,
-    chunk: Chunk,
     storage: &'t mut Storage,
+    context: LexicalContext,
     errored: bool,
-    scopes: Scopes,
 }
 
 impl<'s, 't> Compiler<'s, 't> {
@@ -154,10 +154,9 @@ impl<'s, 't> Compiler<'s, 't> {
         Self {
             scanner: scanner.peekable(),
             reporter,
-            chunk: Chunk::default(),
             storage,
+            context: LexicalContext::default(),
             errored: false,
-            scopes: Scopes::default(),
         }
     }
 
@@ -173,7 +172,7 @@ impl<'s, 't> Compiler<'s, 't> {
 
         match self.errored {
             true => bail!("Compilation failed"),
-            false => Ok(std::mem::take(&mut self.chunk)),
+            false => Ok(std::mem::take(self.context.chunk_mut())),
         }
     }
 
@@ -207,7 +206,7 @@ impl<'s, 't> Compiler<'s, 't> {
             "variable identifier",
         )?;
 
-        if self.scopes.is_global() {
+        if self.context.at_global() {
             self.global_var_decl(ident)
         } else {
             self.local_var_decl(ident)
@@ -231,7 +230,10 @@ impl<'s, 't> Compiler<'s, 't> {
         // Declare AFTER the initializer is compiled so `var a = a + 1;`
         // refers to the previously-bound `a` (rather than itself). This is
         // a deliberate deviation from Lox spec — Rust-style shadowing.
-        self.scopes.declare(name).context("declaring local")?;
+        self.context
+            .scopes_mut()
+            .declare(name)
+            .context("declaring local")?;
         Ok(())
     }
 
@@ -286,7 +288,7 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn while_stmt(&mut self) -> Result<(), CompileError> {
-        let loop_start = self.chunk.current();
+        let loop_start = self.context.chunk().current();
         self.consume(TokenType::While)
             .expect("matched token before entering this branch");
         self.consume(TokenType::LeftParen)
@@ -325,7 +327,7 @@ impl<'s, 't> Compiler<'s, 't> {
             _ => this.expression_stmt()?,
         };
 
-        let mut loop_start = this.chunk.current();
+        let mut loop_start = this.context.chunk().current();
         let exit_jmp = if this.advance_if(TokenType::Semicolon)?.is_none() {
             this.expression()?;
             let tok = this
@@ -340,7 +342,7 @@ impl<'s, 't> Compiler<'s, 't> {
 
         if this.advance_if(TokenType::RightParen)?.is_none() {
             let body_jmp = this.emit_jmp(OpCode::Jmp(0));
-            let inc_start = this.chunk.current();
+            let inc_start = this.context.chunk().current();
             this.expression()?;
             this.emit_pops(1);
             this.consume(TokenType::RightParen)
@@ -527,7 +529,7 @@ impl<'s, 't> Compiler<'s, 't> {
         let name = self.storage.intern(&tok.as_str());
         let line = tok.line();
         // Locals shadow globals.
-        if let Some(slot) = self.scopes.resolve(name) {
+        if let Some(slot) = self.context.scopes().resolve(name) {
             return Ok(Handle::local(slot, line));
         }
         let addr = self.ident_constant(name);
@@ -640,9 +642,9 @@ impl<'s, 't> Compiler<'s, 't> {
     fn begin_scope<'c>(
         &'c mut self,
     ) -> ScopeGuard<&'c mut Compiler<'s, 't>, impl FnOnce(&'c mut Compiler<'s, 't>)> {
-        self.scopes.enter();
+        self.context.scopes_mut().enter();
         scopeguard::guard(self, |this| {
-            let pop_count = this.scopes.exit();
+            let pop_count = this.context.scopes_mut().exit();
             this.emit_pops(pop_count);
         })
     }
@@ -657,46 +659,55 @@ impl<'s, 't> Compiler<'s, 't> {
     }
 
     fn emit_op(&mut self, op: OpCode) {
-        self.chunk.write(op);
+        self.context.chunk_mut().write(op);
     }
 
     fn emit_op_and_line(&mut self, line: u32, op: OpCode) {
-        self.chunk.write_with_line(line, op);
+        self.context.chunk_mut().write_with_line(line, op);
     }
 
     fn add_constant(&mut self, value: Value) -> Addr {
-        if let Some(addr) = self.chunk.constants.iter().rposition(|v| v == &value) {
+        if let Some(addr) = self
+            .context
+            .chunk()
+            .constants
+            .iter()
+            .rposition(|v| v == &value)
+        {
             return addr as Addr;
         }
-        self.chunk.add_constant(value)
+        self.context.chunk_mut().add_constant(value)
     }
 
     fn emit_constant_and_line(&mut self, line: u32, value: Value) -> Addr {
         let addr = self.add_constant(value);
-        self.chunk.write_with_line(line, OpCode::Constant(addr));
+        self.context
+            .chunk_mut()
+            .write_with_line(line, OpCode::Constant(addr));
         addr
     }
 
     fn emit_jmp_and_line(&mut self, line: u32, op: OpCode) -> u64 {
         self.emit_op_and_line(line, op);
-        self.chunk.current()
+        self.context.chunk().current()
     }
 
     fn emit_jmp(&mut self, op: OpCode) -> u64 {
         self.emit_op(op);
-        self.chunk.current()
+        self.context.chunk().current()
     }
 
     fn emit_loop(&mut self, loop_start: u64) {
-        let offset = self.chunk.current() - loop_start + 3; // sizeof(OP_LOOP) = 3
+        let offset = self.context.chunk().current() - loop_start + 3; // sizeof(OP_LOOP) = 3
         assert!(offset <= u16::MAX as u64, "Loop body too large.");
         self.emit_op(OpCode::Loop(offset as u16));
     }
 
     fn patch_jmp(&mut self, offset: u64) {
-        let jmp = self.chunk.current() - offset;
+        let jmp = self.context.chunk().current() - offset;
         assert!(jmp <= u16::MAX as u64, "too much code to jump over.");
-        self.chunk
+        self.context
+            .chunk_mut()
             .write_raw(offset - 2, &(jmp as u16).to_le_bytes());
     }
 

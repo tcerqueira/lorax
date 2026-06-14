@@ -1,7 +1,7 @@
 use lasso::Spur;
 use thiserror::Error;
 
-use crate::enconding::Slot;
+use crate::enconding::LocalSlot;
 
 /// Maximum number of locals live at once. Capped at `u8::MAX` to match the
 /// chunk-constant limit and let any scope's pop count fit in a single `PopN`.
@@ -26,7 +26,7 @@ pub struct Scopes {
 pub struct TooManyLocals;
 
 impl Scopes {
-    pub fn is_global(&self) -> bool {
+    pub fn is_root(&self) -> bool {
         self.depth == 0
     }
 
@@ -53,25 +53,26 @@ impl Scopes {
     /// local (in this or any enclosing scope) is deliberately allowed — see
     /// the `lorax` deviation from Lox spec, which permits `var a = a + 1;`
     /// using the previous binding.
-    pub fn declare(&mut self, name: Spur) -> Result<Slot, TooManyLocals> {
+    pub fn declare(&mut self, name: Spur) -> Result<LocalSlot, TooManyLocals> {
         if self.locals.len() >= MAX_LOCALS {
             return Err(TooManyLocals);
         }
-        let slot = self.locals.len() as Slot;
+        let slot = self.locals.len();
         self.locals.push(Local {
             name,
             depth: self.depth,
         });
-        Ok(slot)
+        Ok(LocalSlot(slot as u8))
     }
 
     /// Resolve a name to the most recent local with that name, or `None` if
     /// no local matches (caller falls back to globals).
-    pub fn resolve(&self, name: Spur) -> Option<Slot> {
+    pub fn resolve(&self, name: Spur) -> Option<LocalSlot> {
         self.locals
             .iter()
             .rposition(|l| l.name == name)
-            .map(|i| i as Slot)
+            .map(|i| i as u8)
+            .map(LocalSlot)
     }
 }
 
@@ -93,8 +94,8 @@ mod tests {
         let mut scopes = Scopes::default();
         scopes.enter();
         let slot = scopes.declare(s[0]).unwrap();
-        assert_eq!(slot, 0);
-        assert_eq!(scopes.resolve(s[0]), Some(0));
+        assert_eq!(slot, LocalSlot(0));
+        assert_eq!(scopes.resolve(s[0]), Some(LocalSlot(0)));
     }
 
     #[test]
@@ -117,7 +118,7 @@ mod tests {
         scopes.declare(s[1]).unwrap();
         scopes.declare(s[2]).unwrap();
         assert_eq!(scopes.exit(), 2);
-        assert_eq!(scopes.resolve(s[0]), Some(0));
+        assert_eq!(scopes.resolve(s[0]), Some(LocalSlot(0)));
         assert_eq!(scopes.resolve(s[1]), None);
         assert_eq!(scopes.resolve(s[2]), None);
     }

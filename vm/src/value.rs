@@ -188,5 +188,3 @@ impl Display for WithStorage<'_, Value> {
         }
     }
 }
-
-pub type Addr = u8;

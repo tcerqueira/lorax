@@ -1,6 +1,6 @@
 use std::slice;
 
-use crate::{enconding::Slot, value::Value};
+use crate::value::Value;
 
 // PERF: all accessors (`top`, `top_mut`, `peek`, `peek_mut`, `get`, `get_mut`,
 // `pop`) bounds-check on every dispatch. The compiler guarantees the indices
@@ -12,8 +12,6 @@ pub struct Stack {
 
 impl Default for Stack {
     fn default() -> Self {
-        // Avoid early-push reallocs. 256 matches the local-slot space; once
-        // call frames land, pick a bigger default scaled to frame budget.
         Self {
             inner: Vec::with_capacity(256),
         }
@@ -31,7 +29,6 @@ impl Stack {
             .expect("compiler bug, nothing to pop on the VM stack")
     }
 
-    /// Drop the top `n` values in one length-write. Used by `OP_POPN`.
     pub fn pop_n(&mut self, n: u8) {
         let new_len = self
             .inner
@@ -67,19 +64,15 @@ impl Stack {
             .expect("compiler bug, nothing to peek on the VM stack")
     }
 
-    /// Absolute-slot read. Used by `OP_GET_LOCAL` — local slot `n` lives at
-    /// stack index `n` (no call frames yet; when frames land this becomes
-    /// `frame.base + n`).
-    pub fn get(&self, slot: Slot) -> &Value {
+    pub fn get(&self, slot: usize) -> &Value {
         self.inner
-            .get(slot as usize)
+            .get(slot)
             .expect("compiler bug, local slot out of range")
     }
 
-    /// Absolute-slot mutable access. Used by `OP_SET_LOCAL`.
-    pub fn get_mut(&mut self, slot: Slot) -> &mut Value {
+    pub fn get_mut(&mut self, slot: usize) -> &mut Value {
         self.inner
-            .get_mut(slot as usize)
+            .get_mut(slot)
             .expect("compiler bug, local slot out of range")
     }
 

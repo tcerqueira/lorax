@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
 use intrusive_collections::{SinglyLinkedList, UnsafeRef};
 use lasso::{Rodeo, Spur};
+use rustc_hash::FxBuildHasher;
 
 use crate::object::{Object, ObjectAdapter, ObjectType, OwnedObject};
+
+pub type SymbolMap<V> = HashMap<Spur, V, FxBuildHasher>;
 
 /// A borrowed value paired with the `Storage` needed to render its objects.
 pub struct WithStorage<'a, T: ?Sized>(pub &'a T, pub &'a Storage);

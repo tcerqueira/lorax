@@ -2,8 +2,8 @@ use std::fmt::{self, Debug};
 
 use crate::{
     debug::{Disassembler, LineInfo},
-    enconding::{OpCode, OpEncoder},
-    value::{Addr, Value},
+    enconding::{Addr, OpCode, OpEncoder},
+    value::Value,
 };
 
 mod serde;
@@ -77,6 +77,12 @@ impl Chunk {
         self.lines
             .get(i)
             .filter(|info| info.byte_range.contains(&byte_offset))
+    }
+}
+
+impl AsRef<[u8]> for Chunk {
+    fn as_ref(&self) -> &[u8] {
+        &self.code
     }
 }
 

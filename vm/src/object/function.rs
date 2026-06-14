@@ -23,10 +23,10 @@ pub struct LoxFunction {
 unsafe impl ObjectType for LoxFunction {}
 
 impl LoxFunction {
-    pub fn new(name: Spur, arity: u8) -> Self {
+    pub fn new(name: Spur, arity: u8, chunk: Chunk) -> Self {
         Self {
             obj: Object::function(),
-            chunk: Chunk::default(),
+            chunk,
             name,
             arity,
         }

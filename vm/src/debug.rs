@@ -7,8 +7,7 @@ use report::Span;
 use serde::{Deserialize, Serialize};
 
 use crate::chunk::Chunk;
-use crate::enconding::{OpCode, OpDecoder};
-use crate::value::Addr;
+use crate::enconding::{Addr, OpCode, OpDecoder};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LineInfo {
@@ -118,8 +117,8 @@ impl OpCode {
             OpCode::DefGlobal(addr) => write_addr(f, "OP_DEFINE_GLOBAL", addr),
             OpCode::GetGlobal(addr) => write_addr(f, "OP_GET_GLOBAL", addr),
             OpCode::SetGlobal(addr) => write_addr(f, "OP_SET_GLOBAL", addr),
-            OpCode::GetLocal(slot) => write_args1(f, "OP_GET_LOCAL", slot),
-            OpCode::SetLocal(slot) => write_args1(f, "OP_SET_LOCAL", slot),
+            OpCode::GetLocal(slot) => write_args1(f, "OP_GET_LOCAL", slot.0),
+            OpCode::SetLocal(slot) => write_args1(f, "OP_SET_LOCAL", slot.0),
             OpCode::PopN(n) => write_args1(f, "OP_POPN", n),
             OpCode::JmpIfFalse(offset) => write_args1(f, "OP_JMP_IF_FALSE", offset),
             OpCode::Jmp(offset) => write_args1(f, "OP_JMP", offset),
