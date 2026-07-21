@@ -1,32 +1,35 @@
+use std::io::Write;
+
 use crate::Spanned;
 use crate::error::{LexingError, ParsingError, RuntimeError};
 
 pub trait Report: Spanned {
-    fn report(&self, source: &str);
+    fn report(&self, source: &str, w: &mut dyn Write);
 }
 
-#[derive(Clone, Copy)]
-pub struct Reporter<'s> {
+pub struct Reporter<'s, 'w> {
     src: &'s str,
+    err: &'w mut dyn Write,
 }
 
-impl<'s> Reporter<'s> {
-    pub fn new(src: &'s str) -> Self {
-        Self { src }
+impl<'s, 'w> Reporter<'s, 'w> {
+    pub fn new(src: &'s str, err: &'w mut dyn Write) -> Self {
+        Self { src, err }
     }
 
-    pub fn report(&self, error: &impl Report) {
+    pub fn report(&mut self, error: &impl Report) {
         let span = error.span();
-        eprint!(
+        let _ = write!(
+            self.err,
             "[line {:>4}] Error '{}': ",
             span.line_start,
             span.slice(self.src)
         );
-        error.report(self.src);
-        eprintln!()
+        error.report(self.src, &mut *self.err);
+        let _ = writeln!(self.err);
     }
 
-    pub fn report_unspanned(&self, error: &anyhow::Error) {
+    pub fn report_unspanned(&mut self, error: &anyhow::Error) {
         for cause in error.chain() {
             if let Some(e) = cause.downcast_ref::<LexingError>() {
                 self.report(e);
@@ -35,7 +38,7 @@ impl<'s> Reporter<'s> {
             } else if let Some(e) = cause.downcast_ref::<RuntimeError>() {
                 self.report(e);
             } else {
-                eprintln!("Error: {cause}");
+                let _ = writeln!(self.err, "Error: {cause}");
             }
         }
     }

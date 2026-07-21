@@ -146,16 +146,20 @@ enum Place {
     Local { slot: LocalSlot, line: u32 },
 }
 
-pub struct Compiler<'s, 't> {
+pub struct Compiler<'s, 'st, 'w, 'r> {
     scanner: Peekable<Scanner<'s>>,
-    reporter: Reporter<'s>,
-    storage: &'t mut Storage,
+    reporter: &'r mut Reporter<'s, 'w>,
+    storage: &'st mut Storage,
     context: Compilation,
     errored: bool,
 }
 
-impl<'s, 't> Compiler<'s, 't> {
-    pub fn new(scanner: Scanner<'s>, reporter: Reporter<'s>, storage: &'t mut Storage) -> Self {
+impl<'s, 'st, 'w, 'r> Compiler<'s, 'st, 'w, 'r> {
+    pub fn new(
+        scanner: Scanner<'s>,
+        reporter: &'r mut Reporter<'s, 'w>,
+        storage: &'st mut Storage,
+    ) -> Self {
         Self {
             scanner: scanner.peekable(),
             reporter,
@@ -181,7 +185,7 @@ impl<'s, 't> Compiler<'s, 't> {
         }
     }
 
-    pub fn report_err(&self, err: CompileError) {
+    pub fn report_err(&mut self, err: CompileError) {
         match err {
             CompileError::Lexing(e) => self.reporter.report(&e),
             CompileError::Parsing(e) => self.reporter.report(&e),
@@ -690,7 +694,8 @@ impl<'s, 't> Compiler<'s, 't> {
     #[must_use]
     fn begin_scope<'c>(
         &'c mut self,
-    ) -> ScopeGuard<&'c mut Compiler<'s, 't>, impl FnOnce(&'c mut Compiler<'s, 't>)> {
+    ) -> ScopeGuard<&'c mut Compiler<'s, 'st, 'w, 'r>, impl FnOnce(&'c mut Compiler<'s, 'st, 'w, 'r>)>
+    {
         self.context.scopes_mut().enter();
         scopeguard::guard(self, |this| {
             let pop_count = this.context.scopes_mut().exit();
@@ -702,7 +707,8 @@ impl<'s, 't> Compiler<'s, 't> {
     fn begin_unit<'c>(
         &'c mut self,
         kind: FunctionKind,
-    ) -> ScopeGuard<&'c mut Compiler<'s, 't>, impl FnOnce(&'c mut Compiler<'s, 't>)> {
+    ) -> ScopeGuard<&'c mut Compiler<'s, 'st, 'w, 'r>, impl FnOnce(&'c mut Compiler<'s, 'st, 'w, 'r>)>
+    {
         self.context.push_unit(kind);
         scopeguard::guard(self, |this| {
             this.context.pop_unit();
@@ -866,10 +872,14 @@ mod tests {
     use super::*;
 
     fn compile(src: &str) -> Chunk {
-        let mut storage = Storage::new();
-        Compiler::new(Scanner::new(src), Reporter::new(src), &mut storage)
-            .compile()
-            .unwrap_or_else(|_| panic!("failed to compile `{src}`"))
+        let mut err = std::io::stderr();
+        Compiler::new(
+            Scanner::new(src),
+            &mut Reporter::new(src, &mut err),
+            &mut Storage::new(),
+        )
+        .compile()
+        .unwrap_or_else(|_| panic!("failed to compile `{src}`"))
     }
 
     #[test]

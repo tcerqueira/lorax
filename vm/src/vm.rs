@@ -1,7 +1,7 @@
 use std::{
     collections::hash_map::Entry,
     fmt::Display,
-    io::Cursor,
+    io::{self, Cursor, Write},
     mem,
     ops::{Add, Div, Mul, Sub},
 };
@@ -86,7 +86,19 @@ impl VirtualMachine {
         RuntimeError::custom(self.make_span(), message)
     }
 
+    fn print_value(&self, value: &Value, out: &mut dyn Write) {
+        let _ = writeln!(out, "{}", WithStorage(value, &self.storage));
+    }
+
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
+        self.run_with(chunk, &mut io::stdout())
+    }
+
+    pub fn run_with(
+        &mut self,
+        chunk: Chunk,
+        out: &mut dyn Write,
+    ) -> Result<(), VirtualMachineError> {
         // top level call frame
         self.frames.push(CallFrame::top_level(chunk, 0));
 
@@ -146,7 +158,7 @@ impl VirtualMachine {
                     .map_err(|_| self.runtime_err("invalid operand"))?,
                 OpCode::Print => {
                     let v = self.stack.pop();
-                    println!("{}", WithStorage(&v, self.storage()));
+                    self.print_value(&v, out);
                 }
                 OpCode::Pop => _ = self.stack.pop(),
                 OpCode::PopN(n) => self.stack.pop_n(n),

@@ -53,7 +53,8 @@ fn run(
     interpreter: &mut Interpreter,
     ast_arena: &mut AstArena,
 ) -> Result<(), Error> {
-    let reporter = Reporter::new(&source);
+    let mut err = std::io::stderr();
+    let mut reporter = Reporter::new(&source, &mut err);
     let tokens = Scanner::new(&source)
         .scan_tokens()
         .inspect_err(|errs| errs.iter().for_each(|e| reporter.report(e)))?;

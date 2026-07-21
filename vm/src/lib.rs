@@ -55,16 +55,28 @@ pub fn run_prompt() -> Result<(), Error> {
 }
 
 pub fn run(source: String, vm: &mut VirtualMachine) -> Result<(), Error> {
-    let reporter = Reporter::new(&source);
+    run_with(source, vm, &mut io::stdout(), &mut io::stderr())
+}
+
+pub fn run_with(
+    source: String,
+    vm: &mut VirtualMachine,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), Error> {
+    let mut reporter = Reporter::new(&source, err);
     let scanner = Scanner::new(&source);
 
-    let mut compiler = Compiler::new(scanner, reporter, vm.storage());
-    let chunk = compiler
-        .compile()
-        // .inspect(|chunk| println!("{chunk:?}"))
-        .inspect_err(|err| reporter.report_unspanned(err))?;
+    let mut compiler = Compiler::new(scanner, &mut reporter, vm.storage());
+    let chunk = match compiler.compile() {
+        Ok(chunk) => chunk,
+        Err(err) => {
+            reporter.report_unspanned(&err);
+            return Err(err.into());
+        }
+    };
 
-    match vm.run(chunk) {
+    match vm.run_with(chunk, out) {
         Err(VirtualMachineError::Decode(err)) => {
             let err = anyhow::Error::new(err).context("Corrupted chunk");
             reporter.report_unspanned(&err);

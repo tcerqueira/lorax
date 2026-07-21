@@ -39,8 +39,8 @@ impl Error {
 }
 
 impl Report for Error {
-    fn report(&self, _source: &str) {
-        eprint!("{}", self.message);
+    fn report(&self, _source: &str, w: &mut dyn std::io::Write) {
+        let _ = write!(w, "{}", self.message);
     }
 }
 
