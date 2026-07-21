@@ -12,9 +12,9 @@ use crate::{
 #[derive(Debug)]
 pub struct LoxFunction {
     obj: Object,
-    chunk: Chunk,
-    name: Spur,
-    arity: u8,
+    pub chunk: Chunk,
+    pub name: Spur,
+    pub arity: u8,
 }
 
 // SAFETY: `LoxFunction` is `#[repr(C)]` with `Object` (`obj`) as its first
@@ -30,6 +30,10 @@ impl LoxFunction {
             name,
             arity,
         }
+    }
+
+    pub fn boxed(name: Spur, arity: u8, chunk: Chunk) -> Box<Self> {
+        Box::new(Self::new(name, arity, chunk))
     }
 }
 

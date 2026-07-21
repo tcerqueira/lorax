@@ -9,11 +9,16 @@ use lexer::{
 use report::{Reporter, error::ParsingError};
 use report::{Span, error::LexingError};
 use scopeguard::ScopeGuard;
+use smallvec::SmallVec;
 
 use crate::{
     chunk::Chunk,
-    compiler::{context::LexicalContext, error::CompileError},
+    compiler::{
+        context::{Compilation, FunctionKind},
+        error::CompileError,
+    },
     enconding::{Addr, LocalSlot, OpCode},
+    object::function::LoxFunction,
     storage::Storage,
     value::Value,
 };
@@ -145,7 +150,7 @@ pub struct Compiler<'s, 't> {
     scanner: Peekable<Scanner<'s>>,
     reporter: Reporter<'s>,
     storage: &'t mut Storage,
-    context: LexicalContext,
+    context: Compilation,
     errored: bool,
 }
 
@@ -155,7 +160,7 @@ impl<'s, 't> Compiler<'s, 't> {
             scanner: scanner.peekable(),
             reporter,
             storage,
-            context: LexicalContext::default(),
+            context: Compilation::default(),
             errored: false,
         }
     }
@@ -168,16 +173,12 @@ impl<'s, 't> Compiler<'s, 't> {
                 self.synchronize()?;
             }
         }
-        self.end();
+        self.emit_return();
 
         match self.errored {
             true => bail!("Compilation failed"),
             false => Ok(std::mem::take(self.context.chunk_mut())),
         }
-    }
-
-    pub fn end(&mut self) {
-        self.emit_op(OpCode::Ret);
     }
 
     pub fn report_err(&self, err: CompileError) {
@@ -195,8 +196,68 @@ impl<'s, 't> Compiler<'s, 't> {
 
         match tok.ty() {
             TokenType::Var => self.var_decl(),
+            TokenType::Fun => self.function_decl(),
             _ => self.statement(),
         }
+    }
+
+    fn function_decl(&mut self) -> Result<(), CompileError> {
+        self.consume(TokenType::Fun)
+            .expect("matched token before entering this branch");
+        let ident = self.consume_with(
+            |t| matches!(t, TokenType::Identifier(_)),
+            "function identifier",
+        )?;
+        let name = self.storage.intern(&ident.as_str());
+        let global = self.context.at_global().then(|| self.ident_constant(name));
+
+        if global.is_none() {
+            self.declare_local(name)?;
+        }
+        self.function(name, FunctionKind::Function, ident.line())?;
+
+        if let Some(addr) = global {
+            self.emit_op_and_line(ident.line(), OpCode::DefGlobal(addr));
+        }
+        Ok(())
+    }
+
+    fn function(&mut self, name: Spur, kind: FunctionKind, line: u32) -> Result<(), CompileError> {
+        let mut unit = self.begin_unit(kind);
+
+        unit.consume(TokenType::LeftParen)
+            .context("expect '(' after function name.")?;
+        let params = unit
+            .list_separated(TokenType::Comma, |this| {
+                if matches!(this.peek()?, Some(t) if t.ty == TokenType::RightParen) {
+                    return Ok(None);
+                }
+                let param =
+                    this.consume_with(|t| matches!(t, TokenType::Identifier(_)), "parameter name")?;
+                Ok(Some(this.storage.intern(&param.as_str())))
+            })
+            .collect::<Result<SmallVec<[_; 8]>, CompileError>>()?;
+        unit.consume(TokenType::RightParen)
+            .context("expect ')' after parameters.")?;
+        let arity = u8::try_from(params.len())
+            .ok()
+            .context("can't have more than 255 parameters")?;
+        for param in &params {
+            unit.declare_local(*param)?;
+        }
+
+        unit.consume(TokenType::LeftBrace)
+            .context("expect '{' before function body.")?;
+        unit.block()?;
+        unit.emit_op(OpCode::Nil);
+        unit.emit_return_and_line(line);
+
+        let this = ScopeGuard::into_inner(unit);
+        let chunk = this.context.pop_unit();
+
+        let obj = this.storage.add_obj(LoxFunction::boxed(name, arity, chunk));
+        this.emit_constant_and_line(line, Value::object(obj));
+        Ok(())
     }
 
     fn var_decl(&mut self) -> Result<(), CompileError> {
@@ -205,31 +266,19 @@ impl<'s, 't> Compiler<'s, 't> {
             |t| matches!(t, TokenType::Identifier(_)),
             "variable identifier",
         )?;
-
-        if self.context.at_global() {
-            self.global_var_decl(ident)
-        } else {
-            self.local_var_decl(ident)
-        }
-    }
-
-    fn global_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
         let name = self.storage.intern(&ident.as_str());
-        let addr = self.ident_constant(name);
+        let global = self.context.at_global().then(|| self.ident_constant(name));
         self.var_initializer(&ident)?;
         let semi = self.consume(TokenType::Semicolon)?;
-        self.emit_op_and_line(semi.line(), OpCode::DefGlobal(addr));
+
+        match global {
+            None => self.declare_local(name)?,
+            Some(addr) => self.emit_op_and_line(semi.line(), OpCode::DefGlobal(addr)),
+        }
         Ok(())
     }
 
-    fn local_var_decl(&mut self, ident: Token) -> Result<(), CompileError> {
-        let name = self.storage.intern(&ident.as_str());
-        self.var_initializer(&ident)?;
-        self.consume(TokenType::Semicolon)?;
-
-        // Declare AFTER the initializer is compiled so `var a = a + 1;`
-        // refers to the previously-bound `a` (rather than itself). This is
-        // a deliberate deviation from Lox spec — Rust-style shadowing.
+    fn declare_local(&mut self, name: Spur) -> Result<(), CompileError> {
         self.context
             .scopes_mut()
             .declare(name)
@@ -649,6 +698,17 @@ impl<'s, 't> Compiler<'s, 't> {
         })
     }
 
+    #[must_use]
+    fn begin_unit<'c>(
+        &'c mut self,
+        kind: FunctionKind,
+    ) -> ScopeGuard<&'c mut Compiler<'s, 't>, impl FnOnce(&'c mut Compiler<'s, 't>)> {
+        self.context.push_unit(kind);
+        scopeguard::guard(self, |this| {
+            this.context.pop_unit();
+        })
+    }
+
     fn emit_pops(&mut self, count: usize) {
         debug_assert!(count <= u8::MAX as usize, "Scopes caps locals at u8::MAX");
         match count {
@@ -664,6 +724,14 @@ impl<'s, 't> Compiler<'s, 't> {
 
     fn emit_op_and_line(&mut self, line: u32, op: OpCode) {
         self.context.chunk_mut().write_with_line(line, op);
+    }
+
+    fn emit_return(&mut self) {
+        self.emit_op(OpCode::Ret);
+    }
+
+    fn emit_return_and_line(&mut self, line: u32) {
+        self.emit_op_and_line(line, OpCode::Ret);
     }
 
     fn add_constant(&mut self, value: Value) -> Addr {
@@ -749,6 +817,24 @@ impl<'s, 't> Compiler<'s, 't> {
                 Err(ParsingError::expected(Span::default(), expected_item, TokenType::Eof).into())
             }
         }
+    }
+
+    fn list_separated<'a, T: 'a>(
+        &'a mut self,
+        separator: TokenType,
+        mut parse: impl FnMut(&mut Self) -> Result<Option<T>, CompileError> + 'a,
+    ) -> impl Iterator<Item = Result<T, CompileError>> {
+        let mut started = false;
+        std::iter::from_fn(move || {
+            if std::mem::replace(&mut started, true) {
+                match self.advance_if(separator.clone()) {
+                    Ok(Some(_)) => {}
+                    Ok(None) => return None,
+                    Err(e) => return Some(Err(e.into())),
+                }
+            }
+            parse(&mut *self).transpose()
+        })
     }
 
     fn synchronize(&mut self) -> Result<(), LexingError> {
@@ -919,6 +1005,31 @@ mod tests {
     #[test]
     fn for_nested() {
         compile("for (var i = 0; i < 2; i = i + 1) for (var j = 0; j < 2; j = j + 1) print i + j;");
+    }
+
+    #[test]
+    fn fun_empty() {
+        compile("fun f() {}");
+    }
+
+    #[test]
+    fn fun_params_resolve_as_locals() {
+        compile("fun add(a, b) { print a + b; }");
+    }
+
+    #[test]
+    fn fun_nested() {
+        compile("fun outer() { fun inner() {} }");
+    }
+
+    #[test]
+    fn fun_local_binding() {
+        compile("{ fun f() {} print f; }");
+    }
+
+    #[test]
+    fn fun_body_reads_global() {
+        compile("var g = 1; fun f() { print g; }");
     }
 
     #[test]

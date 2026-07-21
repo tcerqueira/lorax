@@ -59,7 +59,7 @@ impl VirtualMachine {
         self.frame().chunk()
     }
 
-    fn pc(&mut self) -> &mut Cursor<Chunk> {
+    fn pc(&mut self) -> &mut Cursor<impl AsRef<[u8]>> {
         &mut self.frame_mut().pc
     }
 
@@ -88,7 +88,7 @@ impl VirtualMachine {
 
     pub fn run(&mut self, chunk: Chunk) -> Result<(), VirtualMachineError> {
         // top level call frame
-        self.frames.push(CallFrame::new(chunk, 0));
+        self.frames.push(CallFrame::top_level(chunk, 0));
 
         while let Some(op) = self.pc().decode_op::<OpCode>()? {
             self.trace(op);

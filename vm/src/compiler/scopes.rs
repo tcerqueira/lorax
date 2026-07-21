@@ -9,7 +9,8 @@ const MAX_LOCALS: usize = u8::MAX as usize;
 
 #[derive(Debug, Clone, Copy)]
 struct Local {
-    name: Spur,
+    /// `None` is a reserved slot no identifier can `resolve` to.
+    name: Option<Spur>,
     depth: u32,
 }
 
@@ -54,6 +55,15 @@ impl Scopes {
     /// the `lorax` deviation from Lox spec, which permits `var a = a + 1;`
     /// using the previous binding.
     pub fn declare(&mut self, name: Spur) -> Result<LocalSlot, TooManyLocals> {
+        self.push_local(Some(name))
+    }
+
+    /// Reserve the next slot with a nameless local — nothing can `resolve` to it.
+    pub fn reserve(&mut self) -> Result<LocalSlot, TooManyLocals> {
+        self.push_local(None)
+    }
+
+    fn push_local(&mut self, name: Option<Spur>) -> Result<LocalSlot, TooManyLocals> {
         if self.locals.len() >= MAX_LOCALS {
             return Err(TooManyLocals);
         }
@@ -70,7 +80,7 @@ impl Scopes {
     pub fn resolve(&self, name: Spur) -> Option<LocalSlot> {
         self.locals
             .iter()
-            .rposition(|l| l.name == name)
+            .rposition(|l| l.name == Some(name))
             .map(|i| i as u8)
             .map(LocalSlot)
     }
@@ -121,6 +131,19 @@ mod tests {
         assert_eq!(scopes.resolve(s[0]), Some(LocalSlot(0)));
         assert_eq!(scopes.resolve(s[1]), None);
         assert_eq!(scopes.resolve(s[2]), None);
+    }
+
+    #[test]
+    fn reserved_slot_zero_shifts_locals() {
+        let (_r, s) = make(&["a", "b"]);
+        let mut scopes = Scopes::default();
+        scopes.reserve().unwrap();
+        scopes.enter();
+        assert_eq!(scopes.declare(s[0]).unwrap(), LocalSlot(1));
+        assert_eq!(scopes.declare(s[1]).unwrap(), LocalSlot(2));
+        assert_eq!(scopes.resolve(s[0]), Some(LocalSlot(1)));
+        // The reserved slot itself is unreachable by name.
+        assert_eq!(scopes.locals.len(), 3);
     }
 
     #[test]
